@@ -975,33 +975,7 @@ function selFatigue(v) {
   document.querySelectorAll('#wf-fatigue-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel', i+1===v));
 }
 
-function saveWorkout() {
-  const dist = parseFloat(document.getElementById('wf-dist').value) || 0;
-  const dateVal = document.getElementById('wf-date').value;
-  const w = {
-    id: editingId || Date.now().toString(),
-    type: document.getElementById('wf-type').value,
-    date: dateVal,
-    dist, pace: document.getElementById('wf-pace').value,
-    hr: parseInt(document.getElementById('wf-hr').value) || 0,
-    duration: parseInt(document.getElementById('wf-duration').value) || 0,
-    rpe: selectedRpe, fatigue: selectedFatigue,
-    notes: document.getElementById('wf-notes').value,
-    origin_plan_date: document.getElementById('edit-workout-id').dataset.originPlan || null
-  };
-  if(editingId) {
-    const idx=state.workouts.findIndex(x=>x.id===editingId);
-    if(idx>-1) state.workouts[idx]=w;
-  } else {
-    // Remove planned entry for same date if converting plan → completed
-    state.workouts = state.workouts.filter(x=>!(x.planned&&x.date===dateVal));
-    state.workouts.unshift(w);
-    // Adaptive rebalance after logging
-    if(dist>0) rebalanceAfterCompletion(dateVal, dist);
-  }
-  save(); closeModal('modal-log'); showToast('Treino salvo!');
-  renderDashboard(); renderLog(); renderPlanner();
-}
+// saveWorkout: defined below with full planned→completed transition logic
 
 function deleteWorkout() {
   if(!editingId) return;
@@ -1122,7 +1096,7 @@ function rebalanceAfterCompletion(completedDate, completedKm) {
   const doneKm = kmCompleted(ws, weStr);
   const remaining = Math.max(0, wg - doneKm);
 
-  // Find future planned days with distance (any running type, not strength/rest)
+  // Only adjust running types with distance — never inflate beyond their original dist
   const runTypes = ['z2','long','progressivo','interval','tempo','recovery'];
   const futurePlanned = state.workouts.filter(w=>
     isPlanned(w) && runTypes.includes(w.type) && w.dist>0 &&
@@ -1132,7 +1106,9 @@ function rebalanceAfterCompletion(completedDate, completedKm) {
 
   const perDay = remaining / futurePlanned.length;
   futurePlanned.forEach(w=>{
-    w.dist = Math.max(5, Math.min(36, Math.round(perDay)));
+    // Cap at: min(original dist, 14km for Z2, 32km for long) — never inflate
+    const maxDist = w.type==='long' ? Math.min(32, w.dist) : Math.min(14, w.dist);
+    w.dist = Math.max(5, Math.min(maxDist, Math.round(perDay)));
   });
   save();
 }
@@ -1352,50 +1328,10 @@ function confirmDelete(id) {
 }
 
 // Delete a completed workout — optionally restore it as planned
-function deleteCompletedWorkout(id) {
-  const w = state.workouts.find(x=>x.id===id);
-  if(!w) return;
-  const wasPlanned = w.origin_plan_date || w.date; // track original plan date
-  if(!confirm(`Excluir treino de ${formatDate(w.date)}?\n\nO treino voltará ao estado planejado se havia um plano para este dia.`)) return;
-
-  // Remove completed
-  state.workouts = state.workouts.filter(x=>x.id!==id);
-
-  // Restore as planned if there was an original planned workout
-  const existingPlan = state.workouts.find(x=>x.date===wasPlanned&&x.planned);
-  if(!existingPlan && w.origin_plan_date) {
-    state.workouts.push({
-      id:'plan_'+wasPlanned, date:wasPlanned,
-      type:w.type, dist:w.dist||0, pace:w.pace||'',
-      hr:0, rpe:0, fatigue:0, notes:w.notes||'', planned:true
-    });
-  }
-
-  // Rebalance: recalculate remaining planned km for the week
-  rebalanceAfterCompletion(wasPlanned, 0);
-  save(); showToast('Treino removido — semana rebalanceada');
-  renderDashboard(); renderLog(); renderPlanner();
-}
+// deleteCompletedWorkout: defined below with restore/missed logic
 
 // Open log modal pre-filled from today's planned workout (item 3)
-function openLogFromPlan() {
-  const todayStr = today();
-  const planned = state.workouts.find(w=>w.date===todayStr&&w.planned);
-  if(planned) {
-    // Pre-fill modal with planned data
-    prepLogModal({
-      ...planned,
-      id: null,            // new completed entry
-      planned: false,
-      origin_plan_date: todayStr
-    });
-  } else {
-    // No plan — open blank with today's date
-    prepLogModal(null);
-    document.getElementById('wf-date').value = todayStr;
-  }
-  openModal('modal-log');
-}
+// openLogFromPlan: defined below near saveWorkout override
 
 // Touch swipe for workout items
 let swipeStartX=0, swipeEl=null, swipeInner=null;
@@ -1832,13 +1768,6 @@ function suggestWeekKm() {
 }
 
 // Get full strength steps for a combo workout
-function getStrengthStepsForActive(w) {
-  const notes = (w.notes||'').toLowerCase();
-  if(notes.includes('perna')||notes.includes('— c')) return STRENGTH_SESSIONS[2].steps;
-  if(notes.includes('costas')||notes.includes('— b')) return STRENGTH_SESSIONS[1].steps;
-  return STRENGTH_SESSIONS[0].steps;
-}
-
 // ==================== LOAD BALANCE ====================
 function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier) {
   const currentKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
@@ -1920,19 +1849,26 @@ function previewWeekPlan() {
   const doneKm = planNextWeek?0:parseFloat(c.wkm);
   const pct = Math.round((doneKm+totalKm)/kmGoal*100);
 
-  document.getElementById('preview-subtitle').textContent=`Semana ${weekLabel} · Meta: ${kmGoal}km`;
-  document.getElementById('preview-list').innerHTML=[
+  const stdSubtitle = `Semana ${weekLabel} · Meta: ${kmGoal}km`;
+  const stdList = [
     longCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${longCount} longão (${planParams.long}km alvo)</div>`:'',
     qualityCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${qualityCount} treino de qualidade</div>`:'',
     z2Count>0?`<div class="preview-item"><span class="preview-check">✓</span>${z2Count} rodagem Z2</div>`:'',
     strengthCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${strengthCount} musculação (rotação A→B→C)</div>`:'',
     `<div class="preview-item"><span class="preview-check">≈</span>80% Z2 / 20% qualidade (regra 80/20)</div>`,
   ].join('');
-  document.getElementById('preview-summary').innerHTML=
+  const stdSummary =
     `Volume: <strong style="color:var(--accent)">${(doneKm+totalKm).toFixed(1)}km</strong> / ${kmGoal}km (${pct}%)<br/>`+
     `Intensidade: <strong>${{conservative:'Conservador',standard:'Padrão',aggressive:'Agressivo'}[planParams.intensity]}</strong> · `+
     `Prioridade: <strong>${{volume:'Volume',rhythm:'Ritmo',recovery:'Recuperação'}[planParams.priority]}</strong><br/>`+
     (useLastWeekRef?`Ref semana passada: ${c.lastWeekKm}km considerados na progressão.`:'');
+
+  // Save snapshot so restoreStandardPreview can fully restore
+  pendingPlan._stdSnapshot = {subtitle: stdSubtitle, list: stdList, summary: stdSummary};
+
+  document.getElementById('preview-subtitle').textContent = stdSubtitle;
+  document.getElementById('preview-list').innerHTML = stdList;
+  document.getElementById('preview-summary').innerHTML = stdSummary;
 
   // Sync slider display
   document.getElementById('param-long').value = planParams.long;
@@ -1988,48 +1924,7 @@ function confirmPlan(conservative=false) {
 }
 
 // Conservative plan: show diff preview before saving
-function previewConservativePlan() {
-  if(!pendingPlan) return;
-  const {plan, kmGoal, weekLabel} = pendingPlan;
-
-  // Build conservative version (deep clone, don't mutate pendingPlan)
-  const conservePlan = plan.map(p=>{
-    if(!p.workout||p.done) return p;
-    const cw = {...p.workout};
-    if(cw.dist>0) cw.dist = Math.max(5, Math.round(cw.dist*0.8));
-    if(cw.type==='interval') { cw.type='z2'; cw.title=`Z2 ${cw.dist}km (era tiros)`; }
-    return {...p, workout:cw};
-  });
-
-  const stdKm = plan.filter(p=>p.workout&&!p.done&&!p.isPast).reduce((a,p)=>a+(p.workout.dist||0),0);
-  const consKm = conservePlan.filter(p=>p.workout&&!p.done&&!p.isPast).reduce((a,p)=>a+(p.workout.dist||0),0);
-  const reduction = Math.round((1-consKm/stdKm)*100);
-  const convertedToZ2 = plan.filter(p=>p.workout?.type==='interval').length;
-
-  // Build a mini modal — reuse preview modal with conservative content
-  document.getElementById('preview-subtitle').textContent = `🛡 Plano conservador — semana ${weekLabel}`;
-  document.getElementById('preview-list').innerHTML = [
-    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>Volume reduzido: ${stdKm}km → <strong>${consKm}km</strong> (−${reduction}%)</div>`,
-    convertedToZ2>0 ? `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>${convertedToZ2} tiro(s) convertido(s) para Z2</div>` : '',
-    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação preservada)</div>`,
-    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Longão mantido com distância reduzida</div>`,
-  ].join('');
-  document.getElementById('preview-summary').innerHTML =
-    `Padrão: <strong>${stdKm}km</strong> &nbsp;→&nbsp; Conservador: <strong style="color:var(--teal)">${consKm}km</strong><br/>` +
-    `Ideal para semanas com fadiga alta, risco de lesão ou provas próximas.`;
-
-  // Swap buttons for conservative confirmation
-  const previewModal = document.getElementById('modal-preview');
-  const btns = previewModal.querySelectorAll('.btn');
-  btns[0].textContent = '🛡 Confirmar plano conservador';
-  btns[0].onclick = ()=>{ pendingPlan._conservative=true; confirmPlan(true); };
-  btns[1].textContent = '← Voltar plano padrão';
-  btns[1].style.color = 'var(--text2)';
-  btns[1].style.borderColor = 'var(--border2)';
-  btns[1].onclick = ()=>{ previewWeekPlan(); }; // regenerate standard preview
-  btns[2].style.display='none';
-  // Modal already open — just update content (no re-open needed)
-}
+// previewConservativePlan: defined below with preview-confirm-row approach
 
 // ==================== GENERATE WEEK PLAN ====================
 function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, params=planParams) {
@@ -2350,18 +2245,29 @@ function saveDrawerEdit() {
 function completeFromDrawer() {
   if(!drawerDate) return;
   const planned = state.workouts.find(w=>w.date===drawerDate&&isPlanned(w));
+  closeDayDrawer();
   if(planned) {
-    // Pre-fill log from planned workout
-    prepLogModal({...planned, planned:false, id:null, rpe:0, fatigue:0});
-    closeDayDrawer();
-    openModal('modal-log');
-    // After save, remove planned and rebalance — handled in saveWorkout
+    // Pre-fill with all planned fields — user edits only what changed
     window._completingPlannedDate = drawerDate;
+    prepLogModal({
+      id: null,
+      planned: false,
+      type: planned.type,
+      date: planned.date,
+      dist: planned.dist||0,
+      pace: planned.pace||'',
+      hr: planned.hr||0,
+      duration: planned.duration||0,
+      rpe: 0,
+      fatigue: 0,
+      notes: planned.notes||''
+    });
   } else {
-    document.getElementById('wf-date').value=drawerDate;
-    closeDayDrawer();
-    openModal('modal-log');
+    // No plan — open blank with date pre-filled
+    prepLogModal(null);
+    document.getElementById('wf-date').value = drawerDate;
   }
+  openModal('modal-log');
 }
 
 // Open log pre-filled from today's planned workout
@@ -2511,9 +2417,20 @@ function confirmConservativePlan() {
 
 function restoreStandardPreview() {
   pendingConservativePlan = null;
-  if(pendingPlan) {
-    // Rebuild standard preview display
-    previewWeekPlan();
+  // Restore buttons
+  const row = document.getElementById('preview-confirm-row');
+  if(row) {
+    row.innerHTML = `
+      <button class="btn btn-primary btn-full" onclick="confirmPlan()">✓ Confirmar e salvar no calendário</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--teal);border-color:rgba(46,232,196,0.3)" onclick="previewConservativePlan()">🛡 Gerar versão conservadora</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal('modal-preview');openModal('modal-params')">⚙️ Ajustar parâmetros</button>`;
+  }
+  // Restore full standard preview content from snapshot
+  if(pendingPlan?._stdSnapshot) {
+    const s = pendingPlan._stdSnapshot;
+    document.getElementById('preview-subtitle').textContent = s.subtitle;
+    document.getElementById('preview-list').innerHTML = s.list;
+    document.getElementById('preview-summary').innerHTML = s.summary;
   }
 }
 
