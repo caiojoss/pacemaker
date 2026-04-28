@@ -333,6 +333,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <div class="sub">km acum.</div>
         </div>
       </div>
+      <!-- Execution card (planned vs actual) -->
+      <div class="card" id="db-exec-card" style="margin-bottom:12px"></div>
       <!-- Monthly progress -->
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
@@ -381,7 +383,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <div id="db-next-title" style="font-size:15px;font-weight:700;margin-bottom:4px">–</div>
         <div id="db-next-detail" style="font-family:var(--mono);font-size:11px;color:var(--text2)">–</div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-          <button class="btn btn-primary" style="font-size:12px;padding:8px 16px;flex:1" onclick="openModal('modal-log')">Registrar treino</button>
+          <button class="btn btn-primary" style="font-size:12px;padding:8px 16px;flex:1" onclick="openLogFromPlan()">Registrar treino</button>
           <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px;flex:1" onclick="goTo('sec-coach');setTimeout(()=>document.getElementById('plan-km-goal').focus(),300)">🗓 Planejar semana</button>
         </div>
       </div>
@@ -691,8 +693,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
       <div class="drawer-actions">
         <button class="btn btn-ghost" style="flex:1;font-size:12px" onclick="showDrawerEdit()">✏️ Editar</button>
+        <button class="btn btn-danger" style="font-size:12px;padding:10px 14px;display:none" id="dd-delete-btn">🗑</button>
         <button class="btn btn-primary" style="flex:1;font-size:12px" id="dd-complete-btn" onclick="completeFromDrawer()">✓ Concluir</button>
       </div>
+      <button class="btn btn-danger btn-full" id="dd-delete-btn" style="display:none;margin-top:8px;font-size:12px" onclick="">🗑 Excluir registro</button>
     </div>
     <!-- EDIT MODE -->
     <div id="dd-edit-mode" style="display:none">
@@ -796,9 +800,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
     <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:14px" id="preview-subtitle"></div>
     <div id="preview-list"></div>
     <div style="background:var(--surface2);border-radius:var(--r-sm);padding:12px;margin:14px 0;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.6" id="preview-summary"></div>
-    <button class="btn btn-primary btn-full" onclick="confirmPlan()">✓ Confirmar e salvar no calendário</button>
-    <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--teal);border-color:rgba(46,232,196,0.3)" onclick="confirmPlan(true)">🛡 Gerar versão conservadora</button>
-    <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal('modal-preview');openModal('modal-params')">⚙️ Ajustar parâmetros</button>
+    <div id="preview-confirm-row">
+      <button class="btn btn-primary btn-full" onclick="confirmPlan()">✓ Confirmar e salvar no calendário</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px;color:var(--teal);border-color:rgba(46,232,196,0.3)" onclick="previewConservativePlan()">🛡 Gerar versão conservadora</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="closeModal('modal-preview');openModal('modal-params')">⚙️ Ajustar parâmetros</button>
+    </div>
   </div>
 </div>
 
@@ -936,21 +942,28 @@ function openModal(id) {
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
 function prepLogModal(workout=null) {
-  editingId = workout ? workout.id : null;
-  document.getElementById('modal-log-title').textContent = workout ? 'Editar treino' : 'Novo treino';
-  document.getElementById('edit-workout-id').value = editingId || '';
-  document.getElementById('wf-type').value = workout ? workout.type : 'z2';
-  document.getElementById('wf-date').value = workout ? workout.date : today();
-  document.getElementById('wf-dist').value = workout ? workout.dist : '';
-  document.getElementById('wf-pace').value = workout ? workout.pace : '';
-  document.getElementById('wf-hr').value = workout ? workout.hr : '';
-  document.getElementById('wf-duration').value = workout ? workout.duration : '';
-  document.getElementById('wf-notes').value = workout ? workout.notes : '';
-  selectedRpe = workout ? workout.rpe : 0;
-  selectedFatigue = workout ? workout.fatigue : 0;
-  document.querySelectorAll('#wf-rpe-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel', i+1===selectedRpe));
-  document.querySelectorAll('#wf-fatigue-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel', i+1===selectedFatigue));
-  document.getElementById('delete-workout-btn').style.display = workout ? 'flex' : 'none';
+  editingId = workout ? (workout.id||null) : null;
+  const isEdit = !!(workout&&workout.id&&!workout.planned);
+  const isPlanConvert = !!(workout&&workout.planned);
+  document.getElementById('modal-log-title').textContent =
+    isEdit ? 'Editar treino' : isPlanConvert ? 'Registrar treino planejado' : 'Novo treino';
+  document.getElementById('edit-workout-id').value = editingId||'';
+  // Carry origin for rebalance tracking
+  document.getElementById('edit-workout-id').dataset.originPlan = workout?.origin_plan_date||workout?.date||'';
+  document.getElementById('wf-type').value = workout?.type||'z2';
+  document.getElementById('wf-date').value = workout?.date||today();
+  document.getElementById('wf-dist').value = workout?.dist||'';
+  document.getElementById('wf-pace').value = workout?.pace||'';
+  document.getElementById('wf-hr').value = workout?.hr||'';
+  document.getElementById('wf-duration').value = workout?.duration||'';
+  document.getElementById('wf-notes').value = workout?.notes||'';
+  selectedRpe = workout?.rpe||0;
+  selectedFatigue = workout?.fatigue||0;
+  document.querySelectorAll('#wf-rpe-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel',i+1===selectedRpe));
+  document.querySelectorAll('#wf-fatigue-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel',i+1===selectedFatigue));
+  // Show delete only for real completed entries
+  const delBtn = document.getElementById('delete-workout-btn');
+  if(delBtn) delBtn.style.display = isEdit?'flex':'none';
 }
 
 function selRpe(v) {
@@ -964,28 +977,50 @@ function selFatigue(v) {
 
 function saveWorkout() {
   const dist = parseFloat(document.getElementById('wf-dist').value) || 0;
+  const dateVal = document.getElementById('wf-date').value;
   const w = {
     id: editingId || Date.now().toString(),
     type: document.getElementById('wf-type').value,
-    date: document.getElementById('wf-date').value,
+    date: dateVal,
     dist, pace: document.getElementById('wf-pace').value,
     hr: parseInt(document.getElementById('wf-hr').value) || 0,
     duration: parseInt(document.getElementById('wf-duration').value) || 0,
     rpe: selectedRpe, fatigue: selectedFatigue,
-    notes: document.getElementById('wf-notes').value
+    notes: document.getElementById('wf-notes').value,
+    origin_plan_date: document.getElementById('edit-workout-id').dataset.originPlan || null
   };
-  if(editingId) { const idx=state.workouts.findIndex(x=>x.id===editingId); if(idx>-1)state.workouts[idx]=w; }
-  else state.workouts.unshift(w);
+  if(editingId) {
+    const idx=state.workouts.findIndex(x=>x.id===editingId);
+    if(idx>-1) state.workouts[idx]=w;
+  } else {
+    // Remove planned entry for same date if converting plan → completed
+    state.workouts = state.workouts.filter(x=>!(x.planned&&x.date===dateVal));
+    state.workouts.unshift(w);
+    // Adaptive rebalance after logging
+    if(dist>0) rebalanceAfterCompletion(dateVal, dist);
+  }
   save(); closeModal('modal-log'); showToast('Treino salvo!');
-  renderDashboard(); renderLog();
+  renderDashboard(); renderLog(); renderPlanner();
 }
 
 function deleteWorkout() {
   if(!editingId) return;
+  const w = state.workouts.find(x=>x.id===editingId);
   if(!confirm('Excluir este treino?')) return;
-  state.workouts = state.workouts.filter(w=>w.id!==editingId);
-  save(); closeModal('modal-log'); showToast('Treino excluído');
-  renderDashboard(); renderLog();
+  const dateStr = w?.date||today();
+  const hadPlan = w?.origin_plan_date;
+  state.workouts = state.workouts.filter(x=>x.id!==editingId);
+  // Restore planned stub if this was converted from a plan
+  if(hadPlan && !state.workouts.find(x=>x.date===dateStr&&x.planned)) {
+    state.workouts.push({
+      id:'plan_'+dateStr, date:dateStr, type:w.type,
+      dist:w.dist||0, pace:w.pace||'', hr:0, rpe:0, fatigue:0,
+      notes:w.notes||'', planned:true
+    });
+  }
+  rebalanceAfterCompletion(dateStr, 0);
+  save(); closeModal('modal-log'); showToast('Treino excluído — semana rebalanceada');
+  renderDashboard(); renderLog(); renderPlanner();
 }
 
 // ==================== HELPERS ====================
@@ -1029,33 +1064,101 @@ function isWorkDay(dateStr) {
   return phase < 2;
 }
 
-// ==================== CALCULATIONS ====================
+// ==================== WORKOUT STATE ENGINE ====================
+// States: planned | completed | missed | adjusted
+// Truth source: ONLY completed workouts count in metrics
+
+function isCompleted(w) { return !w.planned && !w.missed && !w.adjusted_from; }
+function isPlanned(w) { return !!w.planned; }
+
+function kmCompleted(dateFrom, dateTo) {
+  return state.workouts
+    .filter(w=>isCompleted(w)&&w.dist>0&&w.date>=dateFrom&&w.date<=dateTo)
+    .reduce((a,w)=>a+(w.dist||0),0);
+}
+
 function kmThisWeek() {
   const ws = weekStart(today());
   const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
-  const weStr = we.toISOString().split('T')[0];
-  return state.workouts.filter(w=>w.date>=ws&&w.date<=weStr).reduce((a,w)=>a+(w.dist||0),0);
+  return kmCompleted(ws, we.toISOString().split('T')[0]);
 }
+
+function kmPlannedThisWeek() {
+  const ws = weekStart(today());
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+  return state.workouts.filter(w=>isPlanned(w)&&w.date>=ws&&w.date<=weStr).reduce((a,w)=>a+(w.dist||0),0);
+}
+
 function kmThisMonth() {
   const ms = monthStart();
-  return state.workouts.filter(w=>w.date>=ms).reduce((a,w)=>a+(w.dist||0),0);
+  const now = today();
+  return kmCompleted(ms, now);
 }
-function kmTotal() { return state.workouts.reduce((a,w)=>a+(w.dist||0),0); }
+
+function kmTotal() {
+  return state.workouts.filter(w=>isCompleted(w)).reduce((a,w)=>a+(w.dist||0),0);
+}
+
+// Plan adherence: planned vs completed this week
+function planAdherence() {
+  const ws = weekStart(today());
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+  const planned = state.workouts.filter(w=>w.date>=ws&&w.date<=weStr&&(isPlanned(w)||isCompleted(w)));
+  if(planned.length===0) return null;
+  const plannedKm = planned.reduce((a,w)=>a+(w.dist||0),0);
+  const completedKm = kmCompleted(ws, weStr);
+  if(plannedKm===0) return null;
+  return Math.min(100, Math.round(completedKm/plannedKm*100));
+}
+
+// Adaptive rebalance: after completing a workout, redistribute remaining planned km
+function rebalanceAfterCompletion(completedDate, completedKm) {
+  const ws = weekStart(completedDate);
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+  const wg = state.config.weekGoal||52;
+  const doneKm = kmCompleted(ws, weStr);
+  const remaining = Math.max(0, wg - doneKm);
+
+  // Find future planned z2 days this week
+  const futurePlanned = state.workouts.filter(w=>
+    isPlanned(w)&&w.type==='z2'&&w.date>completedDate&&w.date>=ws&&w.date<=weStr
+  );
+  if(futurePlanned.length===0) return;
+
+  const perDay = remaining / futurePlanned.length;
+  futurePlanned.forEach(w=>{
+    w.dist = Math.max(5, Math.min(14, Math.round(perDay)));
+    w.notes = (w.notes||'').replace(/\d+km Z2/,`${w.dist}km Z2`);
+  });
+  save();
+}
+
+// Mark planned as missed
+function markMissed(dateStr) {
+  const planned = state.workouts.find(w=>w.date===dateStr&&isPlanned(w));
+  if(planned) { planned.planned=false; planned.missed=true; save(); }
+}
+
+// ==================== CALCULATIONS ====================
 
 function predictMarathon() {
-  const longoes = state.workouts.filter(w=>w.type==='long'&&w.dist>0&&w.pace).sort((a,b)=>b.date.localeCompare(a.date));
+  const longoes = state.workouts
+    .filter(w=>w.type==='long'&&isCompleted(w)&&w.dist>0&&w.pace&&paceToSec(w.pace)>0)
+    .sort((a,b)=>b.date.localeCompare(a.date));
   if(longoes.length===0) return 0;
   const recent = longoes.slice(0,4);
   const avgPaceSec = recent.reduce((a,w)=>a+paceToSec(w.pace),0)/recent.length;
   if(!avgPaceSec) return 0;
-  // Riegel formula adjustment: marathon pace is ~9% slower than half-marathon pace
   const adjPace = avgPaceSec * 1.055;
   return Math.round(adjPace * 42.195);
 }
 
 function readinessScore() {
   const ws = weekStart(today());
-  const lastW = state.workouts.filter(w=>w.date>=ws).slice(0,3);
+  const lastW = state.workouts.filter(w=>isCompleted(w)&&w.date>=ws).slice(0,3);
   if(lastW.length===0) return 85;
   const avgFatigue = lastW.reduce((a,w)=>a+(w.fatigue||3),0)/lastW.length;
   const avgRpe = lastW.reduce((a,w)=>a+(w.rpe||5),0)/lastW.length;
@@ -1095,24 +1198,30 @@ function renderDashboard() {
     document.getElementById('header-countdown').textContent = '-- dias';
   }
 
-  // KMs
-  const wkm = kmThisWeek(), mkm = kmThisMonth(), tkm = kmTotal();
+  // KMs — completed only (truth source)
+  const wkm = kmThisWeek();       // completed only
+  const wkmPlan = kmPlannedThisWeek(); // planned only
+  const wg = state.config.weekGoal||52;
+  const wRemain = Math.max(0, wg - wkm);
+  const mkm = kmThisMonth();
+  const tkm = kmTotal();
+
   document.getElementById('db-week-km').textContent = wkm.toFixed(1);
-  document.getElementById('db-week-goal').textContent = `/ ${state.config.weekGoal||52} km`;
+  document.getElementById('db-week-goal').textContent = `/ ${wg} km · faltam ${wRemain.toFixed(0)}km`;
   document.getElementById('db-month-km').textContent = mkm.toFixed(1);
   document.getElementById('db-total-km').textContent = tkm.toFixed(0);
 
-  // Month bar
+  // Month bar — completed only
   const mg = state.config.monthGoal||190;
   const mpct = Math.min(100, (mkm/mg*100));
   document.getElementById('db-month-pct').textContent = mpct.toFixed(0)+'%';
   document.getElementById('db-month-bar').style.width = mpct+'%';
-  document.getElementById('db-month-bar-text').textContent = mkm.toFixed(1)+' km';
+  document.getElementById('db-month-bar-text').textContent = mkm.toFixed(1)+' km executados';
   document.getElementById('db-month-remain').textContent = Math.max(0,mg-mkm).toFixed(1)+' km restantes';
 
   // Sub4 prediction
   const pred = predictMarathon();
-  const targetSec = 4*3600-120; // 3h58
+  const targetSec = 4*3600-120;
   if(pred > 0) {
     document.getElementById('db-predicted').textContent = secToTime(pred);
     const worstSec = 5.5*3600;
@@ -1137,47 +1246,82 @@ function renderDashboard() {
   const labels = ['','Recuperar','Treino leve','Moderado','Bom para treinar','Ótimo — vai fundo!'];
   document.getElementById('readiness-label').textContent = rs>=80?labels[5]:rs>=65?labels[4]:rs>=50?labels[3]:rs>=35?labels[2]:labels[1];
 
-  // Next workout
+  // Weekly execution card (planned vs actual)
+  const adherence = planAdherence();
+  const execEl = document.getElementById('db-exec-card');
+  if(execEl) {
+    const adh = adherence!==null ? adherence+'%' : '--';
+    const adhColor = adherence===null?'var(--text3)':adherence>=80?'var(--teal)':adherence>=60?'var(--orange)':'var(--red)';
+    execEl.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="label" style="margin-bottom:0">Execução semanal</div>
+        <span class="badge" style="color:${adhColor};border-color:${adhColor}33;background:${adhColor}11">Aderência ${adh}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">
+        <div style="padding:8px 4px;background:rgba(255,255,255,0.03);border-radius:8px">
+          <div style="font-size:8px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Executado</div>
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--teal)">${wkm.toFixed(1)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km reais</div>
+        </div>
+        <div style="padding:8px 4px;background:rgba(255,255,255,0.03);border-radius:8px">
+          <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Planejado</div>
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text2)">${wkmPlan.toFixed(1)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km restantes</div>
+        </div>
+        <div style="padding:8px 4px;background:var(--orange-dim);border:0.5px solid rgba(255,140,66,0.2);border-radius:8px">
+          <div style="font-size:8px;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Faltam</div>
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--orange)">${wRemain.toFixed(0)}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km / meta</div>
+        </div>
+      </div>`;
+  }
+
+  // Next workout — pre-filled from today's plan
   const nw = nextSuggestedWorkout();
   document.getElementById('db-next-title').textContent = nw.title;
   document.getElementById('db-next-detail').textContent = nw.detail;
 
-  // Recent workouts
-  const recents = state.workouts.slice(0,3);
+  // Recent — completed only
+  const recents = state.workouts.filter(w=>isCompleted(w)).slice(0,3);
   const el = document.getElementById('db-recent-list');
-  if(recents.length===0) el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏃</div><div class="empty-text">Nenhum treino registrado ainda.<br/>Toque em "+ Treino" para começar.</div></div>`;
+  if(recents.length===0) el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏃</div><div class="empty-text">Nenhum treino executado ainda.<br/>Toque em "+ Treino" para registrar.</div></div>`;
   else el.innerHTML = recents.map(w=>workoutItemHTML(w)).join('');
 }
 
 // ==================== RENDER LOG ====================
 function renderLog() {
-  const wkm = kmThisWeek();
+  const wkm = kmThisWeek(); // completed only
   const wg = state.config.weekGoal||52;
   const wpct = Math.min(100,wkm/wg*100);
   document.getElementById('log-week-bar').style.width=wpct+'%';
-  document.getElementById('log-week-km-text').textContent=wkm.toFixed(1)+' km';
+  document.getElementById('log-week-km-text').textContent=wkm.toFixed(1)+' km executados';
   document.getElementById('log-week-goal-text').textContent='Meta: '+wg+' km';
 
   const el = document.getElementById('log-list');
-  if(state.workouts.length===0) {
+  const visible = state.workouts.filter(w=>!w.missed);
+  if(visible.length===0) {
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Nenhum treino ainda.<br/>Registre seu primeiro treino!</div></div>`;
     return;
   }
-  el.innerHTML = state.workouts.map(w=>workoutItemHTML(w)).join('');
+  el.innerHTML = visible.map(w=>workoutItemHTML(w)).filter(Boolean).join('');
 }
 
 function workoutItemHTML(w) {
   const chip = `<span class="wchip ${typeChipClass(w.type)}">${typeLabel(w.type)}</span>`;
   const stravaBadge = w.stravaId ? `<span style="font-size:8px;color:#FC4C02;font-family:var(--mono);margin-left:6px">STRAVA</span>` : '';
+  const plannedBadge = w.planned ? `<span style="font-size:8px;color:var(--text3);font-family:var(--mono);margin-left:6px;border:0.5px dashed var(--border2);padding:1px 4px;border-radius:3px">PLAN</span>` : '';
+  const missedBadge = w.missed ? `<span style="font-size:8px;color:var(--red);font-family:var(--mono);margin-left:6px">PERDIDO</span>` : '';
+  const deleteAction = isCompleted(w) ? `deleteCompletedWorkout('${w.id}')` : `confirmDelete('${w.id}')`;
+  if(w.missed) return ''; // Don't show missed in log
   return `<div class="workout-item" id="wi-${w.id}" data-id="${w.id}">
     <div class="workout-item-actions">
       <div class="wact-edit" onclick="editWorkout('${w.id}')">✏️ Editar</div>
-      <div class="wact-del" onclick="confirmDelete('${w.id}')">🗑 Apagar</div>
+      <div class="wact-del" onclick="${deleteAction}">🗑 Apagar</div>
     </div>
     <div class="workout-item-inner" onclick="editWorkout('${w.id}')">
       <div class="workout-item-header">
         <div>
-          <div class="workout-item-title">${w.dist?`<span style="color:var(--text)">${w.dist} km</span> · `:''}<span style="font-weight:400;color:var(--text2)">${typeLabel(w.type)}</span>${stravaBadge}</div>
+          <div class="workout-item-title">${w.dist?`<span style="color:var(--text)">${w.dist} km</span> · `:''}<span style="font-weight:400;color:var(--text2)">${typeLabel(w.type)}</span>${stravaBadge}${plannedBadge}${missedBadge}</div>
           <div class="workout-item-date">${formatDate(w.date)}</div>
         </div>
         ${chip}
@@ -1189,7 +1333,7 @@ function workoutItemHTML(w) {
         ${w.rpe?`<span class="wstat">RPE <strong>${w.rpe}/10</strong></span>`:''}
         ${w.fatigue?`<span class="wstat">Fadiga <strong>${w.fatigue}/5</strong></span>`:''}
       </div>
-      ${w.notes?`<div class="workout-item-notes">"${w.notes.substring(0,120)}${w.notes.length>120?'...':''}"</div>`:''}
+      ${w.notes&&!w.planned?`<div class="workout-item-notes">"${w.notes.substring(0,120)}${w.notes.length>120?'...':''}"</div>`:''}
     </div>
   </div>`;
 }
@@ -1204,6 +1348,52 @@ function confirmDelete(id) {
   state.workouts = state.workouts.filter(w=>w.id!==id);
   save(); showToast('Treino excluído');
   renderDashboard(); renderLog();
+}
+
+// Delete a completed workout — optionally restore it as planned
+function deleteCompletedWorkout(id) {
+  const w = state.workouts.find(x=>x.id===id);
+  if(!w) return;
+  const wasPlanned = w.origin_plan_date || w.date; // track original plan date
+  if(!confirm(`Excluir treino de ${formatDate(w.date)}?\n\nO treino voltará ao estado planejado se havia um plano para este dia.`)) return;
+
+  // Remove completed
+  state.workouts = state.workouts.filter(x=>x.id!==id);
+
+  // Restore as planned if there was an original planned workout
+  const existingPlan = state.workouts.find(x=>x.date===wasPlanned&&x.planned);
+  if(!existingPlan && w.origin_plan_date) {
+    state.workouts.push({
+      id:'plan_'+wasPlanned, date:wasPlanned,
+      type:w.type, dist:w.dist||0, pace:w.pace||'',
+      hr:0, rpe:0, fatigue:0, notes:w.notes||'', planned:true
+    });
+  }
+
+  // Rebalance: recalculate remaining planned km for the week
+  rebalanceAfterCompletion(wasPlanned, 0);
+  save(); showToast('Treino removido — semana rebalanceada');
+  renderDashboard(); renderLog(); renderPlanner();
+}
+
+// Open log modal pre-filled from today's planned workout (item 3)
+function openLogFromPlan() {
+  const todayStr = today();
+  const planned = state.workouts.find(w=>w.date===todayStr&&w.planned);
+  if(planned) {
+    // Pre-fill modal with planned data
+    prepLogModal({
+      ...planned,
+      id: null,            // new completed entry
+      planned: false,
+      origin_plan_date: todayStr
+    });
+  } else {
+    // No plan — open blank with today's date
+    prepLogModal(null);
+    document.getElementById('wf-date').value = todayStr;
+  }
+  openModal('modal-log');
 }
 
 // Touch swipe for workout items
@@ -1316,24 +1506,21 @@ function suggestForDay(dateStr, isWork) {
 
 function renderPlannerSuggestion() {
   const ws = weekStart(today());
-  const wkm = kmThisWeek();
+  const wkm = kmThisWeek();       // completed only
+  const wkmPlan = kmPlannedThisWeek(); // planned only
   const wg = state.config.weekGoal||52;
   const remaining = Math.max(0,wg-wkm);
-  const plannedWorkouts = state.workouts.filter(w=>w.planned&&w.date>=ws);
-  const plannedKm = plannedWorkouts.reduce((a,w)=>a+(w.dist||0),0);
-  const hasPlan = plannedWorkouts.length>0;
+  const hasPlan = wkmPlan>0;
+  const adherence = planAdherence();
   const el = document.getElementById('planner-week-suggestion');
   el.innerHTML = `
-    <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.8">
-      <span style="color:var(--teal)">Concluído:</span> ${wkm.toFixed(1)}km de ${wg}km (${Math.round(wkm/wg*100)}%)<br/>
-      ${hasPlan
-        ? `<span style="color:var(--accent)">Planejado:</span> +${plannedKm.toFixed(1)}km → Total: ${(wkm+plannedKm).toFixed(1)}km<br/><span style="color:var(--text3);font-size:10px">Treinos planejados aparecem tracejados no calendário</span>`
-        : remaining>0
-          ? `<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta · Use o Coach para planejar`
-          : `<span style="color:var(--green)">Meta semanal atingida! 🎉</span>`
-      }
+    <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9">
+      <span style="color:var(--teal)">✓ Executado:</span> ${wkm.toFixed(1)}km reais de ${wg}km (${Math.round(wkm/wg*100)}%)<br/>
+      ${hasPlan?`<span style="color:var(--accent)">📋 Planejado:</span> +${wkmPlan.toFixed(1)}km restantes<br/>`:''}
+      ${remaining>0?`<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta semanal`:`<span style="color:var(--green)">Meta semanal atingida! 🎉</span>`}
+      ${adherence!==null?`<br/><span style="color:var(--text3)">Aderência ao plano: ${adherence}%</span>`:''}
     </div>
-    ${hasPlan ? `<button class="btn btn-ghost btn-full" style="margin-top:10px;font-size:11px" onclick="clearWeekPlan()">Limpar plano da semana</button>` : `<button class="btn btn-ghost btn-full" style="margin-top:10px;font-size:11px" onclick="goTo('sec-coach')">🗓 Ir para o Coach → Planejar semana</button>`}`;
+    ${hasPlan?`<button class="btn btn-ghost btn-full" style="margin-top:10px;font-size:11px" onclick="clearWeekPlan()">Limpar plano da semana</button>`:`<button class="btn btn-ghost btn-full" style="margin-top:10px;font-size:11px" onclick="goTo('sec-coach')">🗓 Coach → Planejar semana</button>`}`;
 }
 
 function clearWeekPlan() {
@@ -1501,27 +1688,25 @@ function clearOpenAIKey() {
 // ==================== COACH AI (MOCK INTELIGENTE) ====================
 function buildCoachContext() {
   const days = state.config.raceDate ? daysBetween(today(), state.config.raceDate) : '--';
-  const wkm = kmThisWeek().toFixed(1);
-  const mkm = kmThisMonth().toFixed(0);
-  const pred = predictMarathon();
+  const wkm = kmThisWeek().toFixed(1);       // completed only
+  const mkm = kmThisMonth().toFixed(0);       // completed only
   const rs = readinessScore();
-  // Last week workouts
-  const ws = weekStart(today());
-  const lastWs = new Date(ws+'T12:00:00'); lastWs.setDate(lastWs.getDate()-7);
-  const lastWe = new Date(ws+'T12:00:00'); lastWe.setDate(lastWe.getDate()-1);
-  const lastWeekStr = lastWs.toISOString().split('T')[0];
-  const lastWeekEndStr = lastWe.toISOString().split('T')[0];
-  const lastWeekWorkouts = state.workouts.filter(w=>w.date>=lastWeekStr&&w.date<=lastWeekEndStr);
-  const lastWeekKm = lastWeekWorkouts.reduce((a,w)=>a+(w.dist||0),0);
-  const longoes = state.workouts.filter(w=>w.type==='long').slice(0,3);
+  const pred = predictMarathon();
+  // Last week completed km
+  const currentWs = weekStart(today());
+  const lastWs = new Date(currentWs+'T12:00:00'); lastWs.setDate(lastWs.getDate()-7);
+  const lastWe = new Date(currentWs+'T12:00:00'); lastWe.setDate(lastWe.getDate()-1);
+  const lastWeekKm = kmCompleted(lastWs.toISOString().split('T')[0], lastWe.toISOString().split('T')[0]).toFixed(1);
+  const longoes = state.workouts.filter(w=>w.type==='long'&&isCompleted(w)&&w.dist>0&&w.pace).sort((a,b)=>b.date.localeCompare(a.date));
   const tomorrowStr = new Date(Date.now()+86400000).toISOString().split('T')[0];
-  return {days, wkm, mkm, pred, rs, lastWeekKm: lastWeekKm.toFixed(1), lastWeekWorkouts, longoes, tomorrowIsWork: isWorkDay(tomorrowStr)};
+  const adh = planAdherence();
+  return {days, wkm, mkm, pred, rs, lastWeekKm, longoes, tomorrowIsWork:isWorkDay(tomorrowStr), adherence:adh};
 }
 
 function renderCoachContext() {
   const c = buildCoachContext();
   document.getElementById('coach-context-box').textContent =
-    `Coach offline · ${c.days} dias até a maratona · ${c.wkm}km esta semana · Semana passada: ${c.lastWeekKm}km · Prontidão: ${c.rs}/100`;
+    `Coach offline · ${c.days} dias · ${c.wkm}km executados esta semana · Semana passada: ${c.lastWeekKm}km · Prontidão: ${c.rs}/100${c.adherence!==null?' · Aderência: '+c.adherence+'%':''}`;
 
   // Smart km suggestion
   const suggested = suggestWeekKm();
@@ -1646,24 +1831,40 @@ function suggestWeekKm() {
   return Math.max(30, Math.min(85, suggested));
 }
 
+// Get full strength steps for a combo workout
+function getStrengthStepsForActive(w) {
+  const notes = (w.notes||'').toLowerCase();
+  if(notes.includes('perna')||notes.includes('— c')) return STRENGTH_SESSIONS[2].steps;
+  if(notes.includes('costas')||notes.includes('— b')) return STRENGTH_SESSIONS[1].steps;
+  return STRENGTH_SESSIONS[0].steps;
+}
+
 // ==================== LOAD BALANCE ====================
 function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier) {
-  // Calculate current planned km
   const currentKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
   const gap = kmGoal - currentKm;
-  if(Math.abs(gap) < 2) return; // close enough
+  if(Math.abs(gap) < 1) return; // within 1km — good enough
 
-  // Find adjustable z2 days (not long/interval/strength)
-  const adjustable = plan.filter(p=>p.workout&&p.workout.type==='z2'&&!p.done&&!p.isPast);
+  // Find adjustable z2 workouts (not long, not interval, not strength, not done, not past)
+  const adjustable = plan.filter(p=>
+    p.workout && ['z2','recovery'].includes(p.workout.type) && !p.done && !p.isPast
+  );
   if(adjustable.length===0) return;
 
-  const adjustPerDay = gap / adjustable.length;
-  adjustable.forEach(p => {
-    const newDist = Math.max(5, Math.min(14, Math.round((p.workout.dist||8)+adjustPerDay)));
+  // Distribute gap evenly across adjustable days, enforce 5-14km bounds
+  const totalAdj = gap;
+  const perDay = totalAdj / adjustable.length;
+  let remaining = totalAdj;
+
+  adjustable.forEach((p, i)=>{
+    const isLast = i===adjustable.length-1;
+    const delta = isLast ? remaining : Math.round(perDay);
+    const newDist = Math.max(5, Math.min(14, Math.round((p.workout.dist||8)+delta)));
+    remaining -= (newDist-(p.workout.dist||8));
     p.workout.dist = newDist;
     p.workout.title = `Z2 ${newDist}km`;
     p.workout.desc = `${newDist}km Z2 · pace 6:20–6:40 · FC <140bpm`;
-    if(p.workout.steps) p.workout.steps[p.workout.steps.length>1?1:0] = {icon:'🏃',text:`${newDist}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'};
+    if(p.workout.steps) p.workout.steps = [{icon:'🏃',text:`${newDist}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}];
   });
 }
 
@@ -1784,6 +1985,50 @@ function confirmPlan(conservative=false) {
   closeModal('modal-preview');
   showToast(conservative?'Plano conservador salvo!':'Plano salvo no calendário!');
   pendingPlan=null;
+}
+
+// Conservative plan: show diff preview before saving
+function previewConservativePlan() {
+  if(!pendingPlan) return;
+  const {plan, kmGoal, weekLabel} = pendingPlan;
+
+  // Build conservative version (deep clone, don't mutate pendingPlan)
+  const conservePlan = plan.map(p=>{
+    if(!p.workout||p.done) return p;
+    const cw = {...p.workout};
+    if(cw.dist>0) cw.dist = Math.max(5, Math.round(cw.dist*0.8));
+    if(cw.type==='interval') { cw.type='z2'; cw.title=`Z2 ${cw.dist}km (era tiros)`; }
+    return {...p, workout:cw};
+  });
+
+  const stdKm = plan.filter(p=>p.workout&&!p.done&&!p.isPast).reduce((a,p)=>a+(p.workout.dist||0),0);
+  const consKm = conservePlan.filter(p=>p.workout&&!p.done&&!p.isPast).reduce((a,p)=>a+(p.workout.dist||0),0);
+  const reduction = Math.round((1-consKm/stdKm)*100);
+  const convertedToZ2 = plan.filter(p=>p.workout?.type==='interval').length;
+
+  // Build a mini modal — reuse preview modal with conservative content
+  document.getElementById('preview-subtitle').textContent = `🛡 Plano conservador — semana ${weekLabel}`;
+  document.getElementById('preview-list').innerHTML = [
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>Volume reduzido: ${stdKm}km → <strong>${consKm}km</strong> (−${reduction}%)</div>`,
+    convertedToZ2>0 ? `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>${convertedToZ2} tiro(s) convertido(s) para Z2</div>` : '',
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação preservada)</div>`,
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Longão mantido com distância reduzida</div>`,
+  ].join('');
+  document.getElementById('preview-summary').innerHTML =
+    `Padrão: <strong>${stdKm}km</strong> &nbsp;→&nbsp; Conservador: <strong style="color:var(--teal)">${consKm}km</strong><br/>` +
+    `Ideal para semanas com fadiga alta, risco de lesão ou provas próximas.`;
+
+  // Swap buttons for conservative confirmation
+  const previewModal = document.getElementById('modal-preview');
+  const btns = previewModal.querySelectorAll('.btn');
+  btns[0].textContent = '🛡 Confirmar plano conservador';
+  btns[0].onclick = ()=>{ pendingPlan._conservative=true; confirmPlan(true); };
+  btns[1].textContent = '← Voltar plano padrão';
+  btns[1].style.color = 'var(--text2)';
+  btns[1].style.borderColor = 'var(--border2)';
+  btns[1].onclick = ()=>{ previewWeekPlan(); }; // regenerate standard preview
+  btns[2].style.display='none';
+  // Modal already open — just update content (no re-open needed)
 }
 
 // ==================== GENERATE WEEK PLAN ====================
@@ -1921,6 +2166,7 @@ function openDayDrawer(dateStr) {
     document.getElementById('dd-steps').innerHTML = `<div style="font-family:var(--mono);font-size:12px;color:var(--text3);padding:16px 0;text-align:center">Nenhum treino registrado.<br/>Toque em "Editar" para adicionar.</div>`;
     document.getElementById('dd-notes-section').style.display='none';
     document.getElementById('dd-complete-btn').style.display='none';
+    document.getElementById('dd-delete-btn').style.display='none';
   } else {
     document.getElementById('dd-title').textContent = active.dist ? `${active.dist}km · ${typeLabel(active.type)}` : typeLabel(active.type);
     const badges = [];
@@ -1929,18 +2175,36 @@ function openDayDrawer(dateStr) {
     if(active.duration) badges.push(`⏳ ${active.duration}min`);
     if(active.rpe) badges.push(`RPE ${active.rpe}/10`);
     if(workout) badges.push('✅ Concluído');
+    if(planned) badges.push('📋 Planejado');
     document.getElementById('dd-badges').innerHTML = badges.map(b=>`<span class="drawer-badge">${b}</span>`).join('');
 
-    // Steps: use planned steps if available, else build from type
-    const steps = active.steps || buildStepsFromType(active);
-    document.getElementById('dd-steps').innerHTML = steps.map(s=>`
-      <div class="drawer-step">
-        <div class="drawer-step-icon" style="background:var(--surface2)">${s.icon}</div>
-        <div>
-          <div class="drawer-step-text">${s.text}</div>
-          ${s.detail?`<div class="drawer-step-km">${s.detail}</div>`:''}
-        </div>
-      </div>`).join('');
+    // Split blocks: strength + run shown separately
+    const isCombo = active.notes && active.notes.includes('Manhã:') && active.notes.includes('Noite:');
+    let stepsHTML = '';
+    if(isCombo && active.steps) {
+      const strengthStep = active.steps.find(s=>s.icon==='💪');
+      const runStep = active.steps.find(s=>s.icon==='🏃');
+      if(strengthStep || runStep) {
+        stepsHTML = `
+          ${strengthStep?`<div style="background:var(--purple-dim);border:0.5px solid rgba(155,126,255,0.2);border-radius:8px;padding:10px;margin-bottom:8px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--purple);margin-bottom:8px">Musculação · Manhã</div>
+            ${(getStrengthStepsForActive(active)||[]).map(s=>`<div class="drawer-step"><div class="drawer-step-icon" style="background:var(--surface2)">${s.icon}</div><div><div class="drawer-step-text">${s.text}</div>${s.detail?`<div class="drawer-step-km">${s.detail}</div>`:''}</div></div>`).join('')}
+          </div>`:''}
+          ${runStep?`<div style="background:var(--blue-dim);border:0.5px solid rgba(77,159,255,0.2);border-radius:8px;padding:10px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--blue);margin-bottom:8px">Corrida Z2 · Noite</div>
+            <div class="drawer-step"><div class="drawer-step-icon" style="background:var(--surface2)">${runStep.icon}</div><div><div class="drawer-step-text">${runStep.text}</div>${runStep.detail?`<div class="drawer-step-km">${runStep.detail}</div>`:''}</div></div>
+          </div>`:''}`;
+      }
+    }
+    if(!stepsHTML) {
+      const steps = active.steps || buildStepsFromType(active);
+      stepsHTML = steps.map(s=>`
+        <div class="drawer-step">
+          <div class="drawer-step-icon" style="background:var(--surface2)">${s.icon}</div>
+          <div><div class="drawer-step-text">${s.text}</div>${s.detail?`<div class="drawer-step-km">${s.detail}</div>`:''}</div>
+        </div>`).join('');
+    }
+    document.getElementById('dd-steps').innerHTML = stepsHTML;
 
     if(active.notes) {
       document.getElementById('dd-notes-section').style.display='block';
@@ -1949,8 +2213,14 @@ function openDayDrawer(dateStr) {
       document.getElementById('dd-notes-section').style.display='none';
     }
     const completeBtn = document.getElementById('dd-complete-btn');
-    if(workout) { completeBtn.textContent='✓ Registrado'; completeBtn.style.opacity='0.5'; completeBtn.disabled=true; }
-    else { completeBtn.textContent='✓ Concluir'; completeBtn.style.opacity='1'; completeBtn.disabled=false; }
+    const deleteBtn = document.getElementById('dd-delete-btn');
+    if(workout) {
+      completeBtn.textContent='✓ Registrado'; completeBtn.style.opacity='0.5'; completeBtn.disabled=true;
+      deleteBtn.style.display='flex'; deleteBtn.onclick=()=>{ closeDrawer(); deleteCompletedWorkout(workout.id); };
+    } else {
+      completeBtn.textContent='✓ Concluir'; completeBtn.style.opacity='1'; completeBtn.disabled=false;
+      deleteBtn.style.display='none';
+    }
     completeBtn.style.display='flex';
   }
 
@@ -1988,11 +2258,15 @@ function buildStepsFromType(w) {
   return [{icon:'🏃',text:typeLabel(type),detail:w.notes||''}];
 }
 
-function closeDayDrawer() {
+function getStrengthStepsForActive(w) {
+  const notes = (w.notes||'').toLowerCase();
+  if(notes.includes('perna')||notes.includes('— c')) return STRENGTH_SESSIONS[2].steps;
+  if(notes.includes('costas')||notes.includes('— b')) return STRENGTH_SESSIONS[1].steps;
+  return STRENGTH_SESSIONS[0].steps;
+}
   document.getElementById('drawer-day').classList.remove('show');
   hideDrawerEdit();
   drawerDate=null;
-}
 
 function showDrawerEdit() {
   const dateStr = drawerDate;
@@ -2006,6 +2280,19 @@ function showDrawerEdit() {
   document.getElementById('dd-edit-dist').value = active?.dist||'';
   document.getElementById('dd-edit-pace').value = active?.pace||'';
   document.getElementById('dd-edit-notes').value = active?.notes||'';
+}
+
+function closeDrawer(){
+  document.getElementById('drawer-day')
+    .classList.remove('show');
+}
+
+function closeDrawerPreview(){
+   closeDrawer();
+}
+
+function closeDayDrawer(){
+   closeDrawer();
 }
 
 function hideDrawerEdit() {
@@ -2062,15 +2349,171 @@ function saveDrawerEdit() {
 
 function completeFromDrawer() {
   if(!drawerDate) return;
-  const planned = state.workouts.find(w=>w.date===drawerDate&&w.planned);
+  const planned = state.workouts.find(w=>w.date===drawerDate&&isPlanned(w));
   if(planned) {
-    prepLogModal({...planned, planned:false, id:null});
+    // Pre-fill log from planned workout
+    prepLogModal({...planned, planned:false, id:null, rpe:0, fatigue:0});
     closeDayDrawer();
     openModal('modal-log');
+    // After save, remove planned and rebalance — handled in saveWorkout
+    window._completingPlannedDate = drawerDate;
   } else {
     document.getElementById('wf-date').value=drawerDate;
     closeDayDrawer();
     openModal('modal-log');
+  }
+}
+
+// Open log pre-filled from today's planned workout
+function openLogFromPlan() {
+  const tStr = today();
+  const planned = state.workouts.find(w=>w.date===tStr&&isPlanned(w));
+  if(planned) {
+    prepLogModal({...planned, planned:false, id:null, rpe:0, fatigue:0});
+    window._completingPlannedDate = tStr;
+  } else {
+    // No plan for today — open blank with date prefilled
+    prepLogModal(null);
+    document.getElementById('wf-date').value=tStr;
+  }
+  openModal('modal-log');
+}
+
+// Override saveWorkout to handle planned → completed transition + rebalance
+const _origSaveWorkout = saveWorkout;
+function saveWorkout() {
+  const completingDate = window._completingPlannedDate;
+  const dist = parseFloat(document.getElementById('wf-dist').value)||0;
+  const editId = document.getElementById('edit-workout-id').value;
+
+  // If we're completing a planned workout, remove the planned entry first
+  if(completingDate && !editId) {
+    state.workouts = state.workouts.filter(w=>!(w.date===completingDate&&isPlanned(w)));
+  }
+
+  // Call original save logic inline
+  const w = {
+    id: editId || Date.now().toString(),
+    type: document.getElementById('wf-type').value,
+    date: document.getElementById('wf-date').value,
+    dist: parseFloat(document.getElementById('wf-dist').value)||0,
+    pace: document.getElementById('wf-pace').value,
+    hr: parseInt(document.getElementById('wf-hr').value)||0,
+    duration: parseInt(document.getElementById('wf-duration').value)||0,
+    rpe: selectedRpe, fatigue: selectedFatigue,
+    notes: document.getElementById('wf-notes').value,
+    planned: false // always completed when saved from log
+  };
+  if(editId) {
+    const idx=state.workouts.findIndex(x=>x.id===editId);
+    if(idx>-1) state.workouts[idx]=w;
+    else state.workouts.unshift(w);
+  } else {
+    state.workouts.unshift(w);
+  }
+
+  // Rebalance after completion
+  if(completingDate) {
+    rebalanceAfterCompletion(completingDate, w.dist);
+    window._completingPlannedDate = null;
+  }
+
+  // Sort by date desc
+  state.workouts.sort((a,b)=>b.date.localeCompare(a.date));
+  save();
+  closeModal('modal-log');
+  showToast('Treino salvo!');
+  renderDashboard(); renderLog(); renderPlanner();
+}
+
+// Delete completed workout with option to restore as planned
+function deleteCompletedWorkout(id) {
+  const w = state.workouts.find(x=>x.id===id);
+  if(!w) return;
+  if(!confirm(`Excluir "${typeLabel(w.type)} ${w.dist?w.dist+'km':''}"\ndo dia ${formatDate(w.date)}?\n\nIsso remove do log e recalcula os km da semana.`)) return;
+
+  // Check if this came from planner (has matching planned date pattern)
+  const dateStr = w.date;
+  state.workouts = state.workouts.filter(x=>x.id!==id);
+
+  // Option to restore as planned
+  const restore = confirm('Restaurar como treino planejado? (Toque Cancelar para remover completamente)');
+  if(restore) {
+    state.workouts.push({
+      id:'plan_'+dateStr+'_restored', date:dateStr, type:w.type,
+      dist:w.dist, pace:w.pace, hr:0, rpe:0, fatigue:0,
+      notes:w.notes, planned:true
+    });
+  } else {
+    // Mark as missed
+    state.workouts.push({
+      id:'missed_'+dateStr, date:dateStr, type:w.type,
+      dist:0, planned:false, missed:true, notes:'Excluído'
+    });
+  }
+
+  // Rebalance
+  rebalanceAfterCompletion(dateStr, 0);
+  save();
+  showToast('Treino excluído');
+  renderDashboard(); renderLog(); renderPlanner();
+}
+
+// ==================== CONSERVATIVE PLAN PREVIEW ====================
+let pendingConservativePlan = null;
+
+function previewConservativePlan() {
+  if(!pendingPlan) return;
+  const {plan, kmGoal, weekLabel} = pendingPlan;
+
+  // Build conservative version
+  const conservPlan = plan.map(p=>{
+    if(!p.workout||p.done) return p;
+    const w = {...p.workout};
+    if(w.dist>0) w.dist = Math.max(5, Math.round(w.dist*0.8));
+    // Intervals → Z2
+    const wasQuality = ['interval','tempo'].includes(w.type);
+    if(wasQuality) { w.type='z2'; w.title=`Z2 ${w.dist}km (→ de tiros)`; }
+    return {...p, workout:w};
+  });
+
+  const stdKm = plan.filter(p=>p.workout&&!p.done).reduce((a,p)=>a+(p.workout.dist||0),0);
+  const consKm = conservPlan.filter(p=>p.workout&&!p.done).reduce((a,p)=>a+(p.workout.dist||0),0);
+  const pctReduction = Math.round((1-consKm/stdKm)*100);
+  const qualConverted = plan.filter(p=>p.workout&&['interval','tempo'].includes(p.workout.type)).length;
+
+  pendingConservativePlan = {...pendingPlan, plan:conservPlan, kmGoal:Math.round(kmGoal*0.82)};
+
+  // Show conservative preview in modal
+  document.getElementById('preview-subtitle').textContent = `🛡 Plano conservador · Semana ${weekLabel}`;
+  document.getElementById('preview-list').innerHTML = [
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>Volume reduzido ${pctReduction}%: ${stdKm}km → ${consKm}km</div>`,
+    qualConverted>0?`<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>${qualConverted} treino(s) de qualidade → Z2</div>`:'',
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação A→B→C)</div>`,
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Longão reduzido para menor impacto</div>`,
+  ].join('');
+  document.getElementById('preview-summary').innerHTML =
+    `Volume conservador: <strong style="color:var(--teal)">${consKm}km</strong> vs ${stdKm}km padrão (${pctReduction}% menos)<br/>Ideal para semanas de fadiga, após evento ou viagem.`;
+
+  // Swap buttons for conservative confirmation
+  const modal = document.getElementById('modal-preview');
+  modal.querySelector('#preview-confirm-row').innerHTML = `
+    <button class="btn btn-primary btn-full" style="background:var(--teal);color:#0a0a0f" onclick="confirmConservativePlan()">✓ Confirmar plano conservador</button>
+    <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="restoreStandardPreview()">← Voltar plano padrão</button>`;
+}
+
+function confirmConservativePlan() {
+  if(!pendingConservativePlan) return;
+  pendingPlan = pendingConservativePlan;
+  confirmPlan();
+  pendingConservativePlan = null;
+}
+
+function restoreStandardPreview() {
+  pendingConservativePlan = null;
+  if(pendingPlan) {
+    // Rebuild standard preview display
+    previewWeekPlan();
   }
 }
 
@@ -2437,6 +2880,8 @@ function renderStravaImportModal(acts) {
   }).join('');
 }
 
+
+
 function toggleStravaSelect(id) {
   const idStr = String(id);
   const el = document.getElementById('sa-'+id);
@@ -2526,11 +2971,22 @@ if('serviceWorker' in navigator) {
 
 // ==================== INIT ====================
 load();
-// Handle Strava OAuth callback FIRST (before rendering)
-handleStravaCallback().then(()=>{
+
+if (typeof handleStravaCallback === 'function') {
+  handleStravaCallback().then(()=>{
+    renderDashboard();
+
+    if(typeof updateStravaBadge === 'function'){
+      updateStravaBadge();
+    }
+
+  }).catch(()=>{
+    renderDashboard();
+  });
+
+} else {
   renderDashboard();
-  updateStravaBadge();
-});
+}
 // Close modal on overlay click
 document.querySelectorAll('.modal-overlay').forEach(o=>{
   o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('show'); });
