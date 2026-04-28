@@ -1122,16 +1122,17 @@ function rebalanceAfterCompletion(completedDate, completedKm) {
   const doneKm = kmCompleted(ws, weStr);
   const remaining = Math.max(0, wg - doneKm);
 
-  // Find future planned z2 days this week
+  // Find future planned days with distance (any running type, not strength/rest)
+  const runTypes = ['z2','long','progressivo','interval','tempo','recovery'];
   const futurePlanned = state.workouts.filter(w=>
-    isPlanned(w)&&w.type==='z2'&&w.date>completedDate&&w.date>=ws&&w.date<=weStr
+    isPlanned(w) && runTypes.includes(w.type) && w.dist>0 &&
+    w.date>completedDate && w.date>=ws && w.date<=weStr
   );
   if(futurePlanned.length===0) return;
 
   const perDay = remaining / futurePlanned.length;
   futurePlanned.forEach(w=>{
-    w.dist = Math.max(5, Math.min(14, Math.round(perDay)));
-    w.notes = (w.notes||'').replace(/\d+km Z2/,`${w.dist}km Z2`);
+    w.dist = Math.max(5, Math.min(36, Math.round(perDay)));
   });
   save();
 }
@@ -1265,7 +1266,7 @@ function renderDashboard() {
         </div>
         <div style="padding:8px 4px;background:rgba(255,255,255,0.03);border-radius:8px">
           <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Planejado</div>
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text2)">${wkmPlan.toFixed(1)}</div>
+          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text2)">${wRemain.toFixed(1)}</div>
           <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km restantes</div>
         </div>
         <div style="padding:8px 4px;background:var(--orange-dim);border:0.5px solid rgba(255,140,66,0.2);border-radius:8px">
@@ -1507,16 +1508,15 @@ function suggestForDay(dateStr, isWork) {
 function renderPlannerSuggestion() {
   const ws = weekStart(today());
   const wkm = kmThisWeek();       // completed only
-  const wkmPlan = kmPlannedThisWeek(); // planned only
   const wg = state.config.weekGoal||52;
-  const remaining = Math.max(0,wg-wkm);
-  const hasPlan = wkmPlan>0;
+  const remaining = Math.max(0, wg - wkm); // always goal minus completed — source of truth
+  const hasPlan = kmPlannedThisWeek()>0;
   const adherence = planAdherence();
   const el = document.getElementById('planner-week-suggestion');
   el.innerHTML = `
     <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9">
       <span style="color:var(--teal)">✓ Executado:</span> ${wkm.toFixed(1)}km reais de ${wg}km (${Math.round(wkm/wg*100)}%)<br/>
-      ${hasPlan?`<span style="color:var(--accent)">📋 Planejado:</span> +${wkmPlan.toFixed(1)}km restantes<br/>`:''}
+      ${hasPlan?`<span style="color:var(--accent)">📋 Planejado:</span> ${remaining.toFixed(1)}km restantes para a meta<br/>`:''}
       ${remaining>0?`<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta semanal`:`<span style="color:var(--green)">Meta semanal atingida! 🎉</span>`}
       ${adherence!==null?`<br/><span style="color:var(--text3)">Aderência ao plano: ${adherence}%</span>`:''}
     </div>
