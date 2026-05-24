@@ -440,9 +440,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:3px;background:var(--purple);display:inline-block;border-radius:1px"></span>Folga</span>
         <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;background:var(--accent);display:inline-block;border-radius:50%"></span>Hoje</span>
       </div>
-      <div class="card">
-        <div class="label" style="margin-bottom:8px">Sugestão da semana atual</div>
+      <div class="card" style="margin-bottom:10px">
+        <div class="label" style="margin-bottom:8px">Semana atual</div>
         <div id="planner-week-suggestion"></div>
+      </div>
+      <div class="card">
+        <div class="label" style="margin-bottom:8px">Próxima semana</div>
+        <div id="planner-next-week"></div>
       </div>
     </div>
 
@@ -1442,29 +1446,73 @@ function suggestForDay(dateStr, isWork) {
 }
 
 function renderPlannerSuggestion() {
-  const ws = weekStart(today());
-  const wkm = kmThisWeek();       // completed only
+  const wkm = kmThisWeek();
   const wg = state.config.weekGoal||52;
-  const remaining = Math.max(0, wg - wkm); // always goal minus completed — source of truth
-  const hasPlan = kmPlannedThisWeek()>0;
+  const remaining = Math.max(0, wg - wkm);
   const adherence = planAdherence();
   const el = document.getElementById('planner-week-suggestion');
   el.innerHTML = `
     <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9">
-      <span style="color:var(--teal)">✓ Executado:</span> ${wkm.toFixed(1)}km reais de ${wg}km (${Math.round(wkm/wg*100)}%)<br/>
-      ${hasPlan?`<span style="color:var(--accent)">📋 Planejado:</span> ${remaining.toFixed(1)}km restantes para a meta<br/>`:''}
-      ${remaining>0?`<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta semanal`:`<span style="color:var(--green)">Meta semanal atingida! 🎉</span>`}
-      ${adherence!==null?`<br/><span style="color:var(--text3)">Aderência ao plano: ${adherence}%</span>`:''}
-    </div>
-    ${hasPlan
-      ? `<div style="display:flex;gap:8px;margin-top:10px">
-           <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="clearWeekPlan()">Limpar plano</button>
-           <button class="btn btn-ghost" style="flex:1;font-size:11px;color:var(--blue);border-color:rgba(77,159,255,0.3)" onclick="exportWeekToCalendar()">📅 Exportar .ics</button>
-         </div>`
-      : `<div style="display:flex;gap:8px;margin-top:10px">
-           <button class="btn btn-ghost btn-full" style="font-size:11px" onclick="goTo('sec-coach')">🗓 Coach → Planejar semana</button>
-         </div>`
-    }`;
+      <span style="color:var(--teal)">✓ Executado:</span> ${wkm.toFixed(1)}km de ${wg}km (${Math.round(wkm/wg*100)}%)<br/>
+      ${remaining>0
+        ? `<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta`
+        : `<span style="color:var(--green)">Meta atingida! 🎉</span>`}
+      ${adherence!==null ? `<br/><span style="color:var(--text3)">Aderência: ${adherence}%</span>` : ''}
+    </div>`;
+
+  renderNextWeekCard();
+}
+
+function renderNextWeekCard() {
+  const el = document.getElementById('planner-next-week');
+  if(!el) return;
+
+  // Next week bounds (Mon→Sun)
+  const nwStart = new Date(weekStart(today())+'T12:00:00');
+  nwStart.setDate(nwStart.getDate()+7);
+  const nwEnd = new Date(nwStart); nwEnd.setDate(nwEnd.getDate()+6);
+  const nwStartStr = nwStart.toISOString().split('T')[0];
+  const nwEndStr   = nwEnd.toISOString().split('T')[0];
+
+  // Label
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const weekLabel = `${nwStart.getDate()} ${months[nwStart.getMonth()]} – ${nwEnd.getDate()} ${months[nwEnd.getMonth()]}`;
+
+  // Planned workouts for next week
+  const planned = state.workouts.filter(w=>
+    isPlanned(w) && w.date >= nwStartStr && w.date <= nwEndStr
+  );
+  const totalKm = planned.reduce((a,w)=>a+(w.dist||0), 0);
+  const hasPlan = planned.length > 0;
+
+  if(hasPlan) {
+    // Count by type for summary
+    const runCount = planned.filter(w=>['z2','long','interval','progressivo','tempo','recovery'].includes(w.type)).length;
+    const strengthCount = planned.filter(w=>w.type==='strength').length;
+    const typeBreakdown = [
+      runCount > 0 ? `${runCount} corrida${runCount>1?'s':''}` : '',
+      strengthCount > 0 ? `${strengthCount} musculação` : ''
+    ].filter(Boolean).join(' · ');
+
+    el.innerHTML = `
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9;margin-bottom:10px">
+        <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">● Planejada</span>
+        <span style="color:var(--text3);margin-left:8px">${weekLabel}</span><br/>
+        <span style="color:var(--teal)">${totalKm.toFixed(0)}km</span> planejados · ${planned.length} treino${planned.length>1?'s':''}<br/>
+        <span style="color:var(--text3)">${typeBreakdown}</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" style="flex:1;font-size:11px;color:var(--blue);border-color:rgba(77,159,255,0.3)" onclick="exportNextWeekToCalendar()">📅 Exportar .ics</button>
+        <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="clearNextWeekPlan()">Limpar plano</button>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:10px">
+        <span style="color:var(--text3)">${weekLabel}</span><br/>
+        Nenhum plano criado ainda.
+      </div>
+      <button class="btn btn-ghost btn-full" style="font-size:11px" onclick="goTo('sec-coach')">🗓 Planejar semana →</button>`;
+  }
 }
 
 function clearWeekPlan() {
@@ -1472,6 +1520,36 @@ function clearWeekPlan() {
   const ws = weekStart(today());
   state.workouts = state.workouts.filter(w=>!(w.planned&&w.date>=ws));
   save(); renderPlanner(); showToast('Plano da semana limpo');
+}
+
+function clearNextWeekPlan() {
+  if(!confirm('Limpar o plano da próxima semana?')) return;
+  const nwStart = new Date(weekStart(today())+'T12:00:00');
+  nwStart.setDate(nwStart.getDate()+7);
+  const nwEnd = new Date(nwStart); nwEnd.setDate(nwEnd.getDate()+6);
+  const nwStartStr = nwStart.toISOString().split('T')[0];
+  const nwEndStr   = nwEnd.toISOString().split('T')[0];
+  state.workouts = state.workouts.filter(w=>!(isPlanned(w)&&w.date>=nwStartStr&&w.date<=nwEndStr));
+  save(); renderPlanner(); showToast('Plano da próxima semana limpo');
+}
+
+function exportNextWeekToCalendar() {
+  const nwStart = new Date(weekStart(today())+'T12:00:00');
+  nwStart.setDate(nwStart.getDate()+7);
+  const nwEnd = new Date(nwStart); nwEnd.setDate(nwEnd.getDate()+6);
+  const nwStartStr = nwStart.toISOString().split('T')[0];
+  const nwEndStr   = nwEnd.toISOString().split('T')[0];
+
+  const planned = state.workouts.filter(w=>
+    isPlanned(w) && w.date >= nwStartStr && w.date <= nwEndStr
+  ).sort((a,b)=>a.date.localeCompare(b.date));
+
+  if(planned.length===0) { showToast('Nenhum treino planejado na próxima semana'); return; }
+
+  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const label = `${nwStart.getDate()}-${nwEnd.getDate()}_${months[nwEnd.getMonth()]}`;
+  downloadICS(generateICS(planned), `pacemaker_semana_${label}.ics`);
+  showToast(`📅 ${planned.length} treino(s) exportados!`);
 }
 
 function plannerNav(dir) { plannerOffset+=dir; renderPlanner(); }
