@@ -1456,7 +1456,15 @@ function renderPlannerSuggestion() {
       ${remaining>0?`<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta semanal`:`<span style="color:var(--green)">Meta semanal atingida! 🎉</span>`}
       ${adherence!==null?`<br/><span style="color:var(--text3)">Aderência ao plano: ${adherence}%</span>`:''}
     </div>
-    ${hasPlan?`<button class="btn btn-ghost btn-full" style="margin-top:10px;font-size:11px" onclick="clearWeekPlan()">Limpar plano da semana</button>`:`<button class="btn btn-ghost btn-full" style="margin-top:10px;font-size:11px" onclick="goTo('sec-coach')">🗓 Coach → Planejar semana</button>`}`;
+    ${hasPlan
+      ? `<div style="display:flex;gap:8px;margin-top:10px">
+           <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="clearWeekPlan()">Limpar plano</button>
+           <button class="btn btn-ghost" style="flex:1;font-size:11px;color:var(--blue);border-color:rgba(77,159,255,0.3)" onclick="exportWeekToCalendar()">📅 Exportar .ics</button>
+         </div>`
+      : `<div style="display:flex;gap:8px;margin-top:10px">
+           <button class="btn btn-ghost btn-full" style="font-size:11px" onclick="goTo('sec-coach')">🗓 Coach → Planejar semana</button>
+         </div>`
+    }`;
 }
 
 function clearWeekPlan() {
@@ -2863,6 +2871,160 @@ function stravaImportSelected() {
   showToast(`✓ ${count} treino(s) importado(s)!`);
   renderDashboard(); renderLog();
   stravaSelectedIds.clear();
+}
+
+// ==================== ICS EXPORT ====================
+function icsEscape(str) {
+  return (str||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+}
+
+function icsDateTime(dateStr, hour) {
+  // dateStr = 'YYYY-MM-DD', hour = 8 or 19
+  const d = dateStr.replace(/-/g,'');
+  const h = String(hour).padStart(2,'0');
+  return `${d}T${h}0000`;
+}
+
+function icsEndDateTime(dateStr, hour, durationMin) {
+  const start = new Date(dateStr+'T'+String(hour).padStart(2,'0')+':00:00');
+  start.setMinutes(start.getMinutes() + durationMin);
+  const y = start.getFullYear();
+  const mo = String(start.getMonth()+1).padStart(2,'0');
+  const dy = String(start.getDate()).padStart(2,'0');
+  const h = String(start.getHours()).padStart(2,'0');
+  const mi = String(start.getMinutes()).padStart(2,'0');
+  return `${y}${mo}${dy}T${h}${mi}00`;
+}
+
+function workoutDurationMin(w) {
+  if(w.duration && w.duration > 0) return w.duration;
+  // Estimate from distance + type
+  const dist = w.dist||0;
+  if(w.type==='strength') return 50;
+  if(w.type==='swim') return 45;
+  if(w.type==='bike') return 60;
+  if(dist === 0) return 40;
+  const paceSec = paceToSec(w.pace) || 360; // default 6:00/km
+  return Math.round(dist * paceSec / 60) + 10; // +10min warmup buffer
+}
+
+function workoutICSTitle(w) {
+  const icons = {z2:'🏃',long:'🏃',interval:'⚡',progressivo:'📈',tempo:'🔥',strength:'💪',bike:'🚴',swim:'🏊',recovery:'🚶'};
+  const icon = icons[w.type]||'🏃';
+  const label = typeLabel(w.type);
+  const dist = w.dist > 0 ? ` — ${w.dist}km` : '';
+  return `${icon} ${label}${dist}`;
+}
+
+function workoutICSDescription(w) {
+  const lines = [];
+  if(w.dist > 0) lines.push(`Distância: ${w.dist}km`);
+  if(w.pace) lines.push(`Pace alvo: ${w.pace}/km`);
+  if(w.notes) lines.push(`Notas: ${w.notes}`);
+  if(w.steps && w.steps.length > 0) {
+    lines.push('');
+    lines.push('Estrutura:');
+    w.steps.forEach(s => lines.push(`  ${s.icon||'•'} ${s.text}${s.detail?' — '+s.detail:''}`));
+  }
+  lines.push('');
+  lines.push('Gerado pelo Pacemaker 🏁');
+  return lines.join('\n');
+}
+
+function generateICS(workouts) {
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[-:]/g,'').split('.')[0]+'Z';
+
+  const events = workouts.map(w => {
+    const isWork = isWorkDay(w.date);
+    const startHour = isWork ? 19 : 8;
+    const durMin = workoutDurationMin(w);
+    const dtStart = icsDateTime(w.date, startHour);
+    const dtEnd = icsEndDateTime(w.date, startHour, durMin);
+    const uid = `${w.id||w.date}-${Date.now()}@pacemaker`;
+    const title = icsEscape(workoutICSTitle(w));
+    const desc = icsEscape(workoutICSDescription(w));
+    const category = ['strength','swim','bike'].includes(w.type) ? 'TREINO' : 'CORRIDA';
+
+    return [
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${title}`,
+      `DESCRIPTION:${desc}`,
+      `CATEGORIES:${category}`,
+      `STATUS:TENTATIVE`,
+      'END:VEVENT'
+    ].join('\r\n');
+  });
+
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Pacemaker//v0.7//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Pacemaker — Treinos',
+    'X-WR-CALDESC:Semana de treinos exportada do Pacemaker',
+    ...events,
+    'END:VCALENDAR'
+  ].join('\r\n');
+}
+
+function downloadICS(icsString, filename) {
+  const blob = new Blob([icsString], {type:'text/calendar;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'pacemaker-treinos.ics';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+}
+
+function exportWeekToCalendar() {
+  const ws = weekStart(today());
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+
+  const planned = state.workouts.filter(w =>
+    isPlanned(w) && w.date >= ws && w.date <= weStr
+  ).sort((a,b) => a.date.localeCompare(b.date));
+
+  if(planned.length === 0) {
+    showToast('Nenhum treino planejado esta semana');
+    return;
+  }
+
+  const wsDate = new Date(ws+'T12:00:00');
+  const weDate = new Date(weStr+'T12:00:00');
+  const label = `${wsDate.getDate()}-${weDate.getDate()}_${weDate.toLocaleString('pt-BR',{month:'short'})}`;
+  const filename = `pacemaker_semana_${label}.ics`;
+  const ics = generateICS(planned);
+  downloadICS(ics, filename);
+  showToast(`📅 ${planned.length} treino(s) exportados!`);
+}
+
+function exportMonthToCalendar() {
+  const ms = monthStart();
+  const now = new Date();
+  const me = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().split('T')[0];
+
+  const planned = state.workouts.filter(w =>
+    isPlanned(w) && w.date >= ms && w.date <= me
+  ).sort((a,b) => a.date.localeCompare(b.date));
+
+  if(planned.length === 0) {
+    showToast('Nenhum treino planejado este mês');
+    return;
+  }
+
+  const ics = generateICS(planned);
+  const monthName = new Date(ms+'T12:00:00').toLocaleString('pt-BR',{month:'long',year:'numeric'});
+  downloadICS(ics, `pacemaker_${monthName.replace(' ','_')}.ics`);
+  showToast(`📅 ${planned.length} treino(s) do mês exportados!`);
 }
 
 // ==================== PWA ====================
