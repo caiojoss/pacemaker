@@ -1478,20 +1478,28 @@ function renderNextWeekCard() {
   const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const weekLabel = `${nwStart.getDate()} ${months[nwStart.getMonth()]} – ${nwEnd.getDate()} ${months[nwEnd.getMonth()]}`;
 
-  // Planned workouts for next week
+  // Planned workouts for next week — same source as calendar cells
   const planned = state.workouts.filter(w=>
     isPlanned(w) && w.date >= nwStartStr && w.date <= nwEndStr
-  );
+  ).sort((a,b)=>a.date.localeCompare(b.date));
+
+  // km total: sum dist from all planned (includes Z2 portion of strength+run combos)
   const totalKm = planned.reduce((a,w)=>a+(w.dist||0), 0);
   const hasPlan = planned.length > 0;
 
   if(hasPlan) {
-    // Count by type for summary
-    const runCount = planned.filter(w=>['z2','long','interval','progressivo','tempo','recovery'].includes(w.type)).length;
-    const strengthCount = planned.filter(w=>w.type==='strength').length;
-    const typeBreakdown = [
-      runCount > 0 ? `${runCount} corrida${runCount>1?'s':''}` : '',
-      strengthCount > 0 ? `${strengthCount} musculação` : ''
+    // Count by display type — match exactly what the calendar shows
+    const longCount      = planned.filter(w=>w.type==='long').length;
+    const qualityCount   = planned.filter(w=>['interval','progressivo','tempo'].includes(w.type)).length;
+    const z2Count        = planned.filter(w=>w.type==='z2').length;
+    const strengthCount  = planned.filter(w=>w.type==='strength').length;
+    const otherCount     = planned.filter(w=>['bike','swim','recovery'].includes(w.type)).length;
+    const breakdown = [
+      longCount      > 0 ? `${longCount} longão`           : '',
+      qualityCount   > 0 ? `${qualityCount} qualidade`     : '',
+      z2Count        > 0 ? `${z2Count} Z2`                 : '',
+      strengthCount  > 0 ? `${strengthCount} musculação`   : '',
+      otherCount     > 0 ? `${otherCount} outro`           : '',
     ].filter(Boolean).join(' · ');
 
     el.innerHTML = `
@@ -1499,7 +1507,7 @@ function renderNextWeekCard() {
         <span style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">● Planejada</span>
         <span style="color:var(--text3);margin-left:8px">${weekLabel}</span><br/>
         <span style="color:var(--teal)">${totalKm.toFixed(0)}km</span> planejados · ${planned.length} treino${planned.length>1?'s':''}<br/>
-        <span style="color:var(--text3)">${typeBreakdown}</span>
+        <span style="color:var(--text3)">${breakdown}</span>
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost" style="flex:1;font-size:11px;color:var(--blue);border-color:rgba(77,159,255,0.3)" onclick="exportNextWeekToCalendar()">📅 Exportar .ics</button>
@@ -1518,7 +1526,13 @@ function renderNextWeekCard() {
 function clearWeekPlan() {
   if(!confirm('Limpar o plano desta semana? Os treinos concluídos são mantidos.')) return;
   const ws = weekStart(today());
-  state.workouts = state.workouts.filter(w=>!(w.planned&&w.date>=ws));
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+  // Remove only current week planned — bounded upper limit
+  state.workouts = state.workouts.filter(w=>!(isPlanned(w)&&w.date>=ws&&w.date<=weStr));
+  // Reset all in-memory plan state so next generation starts clean
+  pendingPlan = null;
+  pendingConservativePlan = null;
   save(); renderPlanner(); showToast('Plano da semana limpo');
 }
 
@@ -1530,6 +1544,9 @@ function clearNextWeekPlan() {
   const nwStartStr = nwStart.toISOString().split('T')[0];
   const nwEndStr   = nwEnd.toISOString().split('T')[0];
   state.workouts = state.workouts.filter(w=>!(isPlanned(w)&&w.date>=nwStartStr&&w.date<=nwEndStr));
+  // Reset in-memory state so next generation starts clean
+  pendingPlan = null;
+  pendingConservativePlan = null;
   save(); renderPlanner(); showToast('Plano da próxima semana limpo');
 }
 
