@@ -2318,12 +2318,12 @@ function saveDrawerEdit() {
     state.workouts = state.workouts.filter(w=>w.date!==dateStr||(w.date===dateStr&&w.id!==existing.id));
   }
 
-  // Save updated workout
+  // Save updated workout — preserve planned flag from original entry
   state.workouts.push({
     id: existing?.id||('edit_'+Date.now()),
     date: dateStr, type, dist, pace, hr: existing?.hr||0,
     rpe: existing?.rpe||0, fatigue: existing?.fatigue||0,
-    notes, planned: false
+    notes, planned: existing?.planned ?? false
   });
 
   // Optional rebalance: adjust other planned Z2 days this week
