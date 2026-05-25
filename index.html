@@ -840,7 +840,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <button class="modal-close" onclick="closeModal('modal-log')">×</button>
     </div>
     <input type="hidden" id="edit-workout-id"/>
-    <div class="form-group">
+
+    <!-- MODALIDADE SELECTOR -->
+    <div class="form-group" style="margin-bottom:14px">
+      <label class="form-label">Modalidade</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button class="rpe-btn sel" id="mode-btn-run" onclick="setModalMode('run')" style="flex:1;padding:10px">🏃 Corrida</button>
+        <button class="rpe-btn" id="mode-btn-strength" onclick="setModalMode('strength')" style="flex:1;padding:10px">💪 Musculação</button>
+      </div>
+    </div>
+
+    <!-- SHARED: tipo + data -->
+    <div id="wf-section-type-run" class="form-group">
       <label class="form-label">Tipo de treino</label>
       <select class="form-select" id="wf-type">
         <option value="z2">Z2 · Base aeróbica</option>
@@ -848,36 +859,71 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <option value="long">Longão</option>
         <option value="progressivo">Progressivo</option>
         <option value="tempo">Tempo run</option>
-        <option value="strength">Musculação</option>
         <option value="bike">Bike</option>
         <option value="swim">Natação</option>
         <option value="recovery">Recuperação</option>
       </select>
     </div>
+    <!-- Hidden strength type — always 'strength', set by JS -->
+    <input type="hidden" id="wf-type-strength" value="strength"/>
+
     <div class="form-group">
       <label class="form-label">Data</label>
       <input type="date" class="form-input" id="wf-date"/>
     </div>
-    <div class="grid2" style="gap:10px">
-      <div class="form-group">
-        <label class="form-label">Distância (km)</label>
-        <input type="number" step="0.1" class="form-input" id="wf-dist" placeholder="0.0"/>
+
+    <!-- CORRIDA FIELDS -->
+    <div id="wf-fields-run">
+      <div class="grid2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Distância (km)</label>
+          <input type="number" step="0.1" class="form-input" id="wf-dist" placeholder="0.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pace médio (min:seg)</label>
+          <input type="text" class="form-input" id="wf-pace" placeholder="6:20"/>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Pace médio (min:seg)</label>
-        <input type="text" class="form-input" id="wf-pace" placeholder="6:20"/>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">FC média (bpm)</label>
+          <input type="number" class="form-input" id="wf-hr" placeholder="140"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duração (min)</label>
+          <input type="number" class="form-input" id="wf-duration" placeholder="60"/>
+        </div>
       </div>
     </div>
-    <div class="grid2" style="gap:10px">
+
+    <!-- MUSCULAÇÃO FIELDS -->
+    <div id="wf-fields-strength" style="display:none">
       <div class="form-group">
-        <label class="form-label">FC média (bpm)</label>
-        <input type="number" class="form-input" id="wf-hr" placeholder="140"/>
+        <label class="form-label">Grupo muscular</label>
+        <select class="form-select" id="wf-muscle-group">
+          <option value="Peito">Peito</option>
+          <option value="Costas">Costas</option>
+          <option value="Pernas">Pernas</option>
+          <option value="Ombros">Ombros</option>
+          <option value="Braços">Braços</option>
+          <option value="Core">Core</option>
+          <option value="Full Body">Full Body</option>
+          <option value="Outro">Outro</option>
+        </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Duração (min)</label>
-        <input type="number" class="form-input" id="wf-duration" placeholder="60"/>
+      <div class="grid2" style="gap:10px">
+        <div class="form-group">
+          <label class="form-label">Duração (min)</label>
+          <input type="number" class="form-input" id="wf-strength-duration" placeholder="45"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">FC média (bpm)</label>
+          <input type="number" class="form-input" id="wf-strength-hr" placeholder="120"/>
+        </div>
       </div>
     </div>
+
+    <!-- SHARED: RPE + fadiga + notas -->
     <div class="form-group">
       <label class="form-label">Percepção de esforço (RPE 1–10)</label>
       <div class="rpe-row" id="wf-rpe-row">
@@ -897,8 +943,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Observações mentais / diário</label>
-      <textarea class="form-textarea" id="wf-notes" rows="3" placeholder='Ex: "Síndrome do impostor no km 14. Mantive o ritmo."'></textarea>
+      <label class="form-label" id="wf-notes-label">Observações</label>
+      <textarea class="form-textarea" id="wf-notes" rows="3" placeholder="Observações do treino..."></textarea>
     </div>
     <button class="btn btn-primary btn-full" onclick="saveWorkout()">Salvar treino</button>
     <button class="btn btn-danger btn-full" id="delete-workout-btn" style="display:none;margin-top:8px" onclick="deleteWorkout()">Excluir treino</button>
@@ -918,6 +964,24 @@ let state = {
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
 let plannerOffset = 0;
+let _modalMode = 'run'; // 'run' | 'strength'
+
+function setModalMode(mode) {
+  _modalMode = mode;
+  document.getElementById('mode-btn-run').classList.toggle('sel', mode==='run');
+  document.getElementById('mode-btn-strength').classList.toggle('sel', mode==='strength');
+  document.getElementById('wf-section-type-run').style.display = mode==='run' ? '' : 'none';
+  document.getElementById('wf-fields-run').style.display = mode==='run' ? '' : 'none';
+  document.getElementById('wf-fields-strength').style.display = mode==='strength' ? '' : 'none';
+  const notesEl = document.getElementById('wf-notes');
+  const notesLabel = document.getElementById('wf-notes-label');
+  if(notesEl && notesLabel) {
+    notesEl.placeholder = mode==='strength'
+      ? 'Ex: "Aumentei carga no supino. Boa sessão."'
+      : 'Ex: "Síndrome do impostor no km 14. Mantive o ritmo."';
+    notesLabel.textContent = mode==='strength' ? 'Observações' : 'Observações mentais / diário';
+  }
+}
 
 function save() { localStorage.setItem(DB_KEY, JSON.stringify(state)); }
 function load() {
@@ -944,7 +1008,8 @@ function goTo(sec) {
 
 // ==================== MODAL ====================
 function openModal(id) {
-  if(id==='modal-log') prepLogModal();
+  // Only auto-call prepLogModal for new workouts (not when editWorkout already populated it)
+  if(id==='modal-log' && !editingId) prepLogModal();
   document.getElementById(id).classList.add('show');
 }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
@@ -956,20 +1021,36 @@ function prepLogModal(workout=null) {
   document.getElementById('modal-log-title').textContent =
     isEdit ? 'Editar treino' : isPlanConvert ? 'Registrar treino planejado' : 'Novo treino';
   document.getElementById('edit-workout-id').value = editingId||'';
-  // Carry origin for rebalance tracking
   document.getElementById('edit-workout-id').dataset.originPlan = workout?.origin_plan_date||workout?.date||'';
-  document.getElementById('wf-type').value = workout?.type||'z2';
+
+  // Determine mode: strength type → strength mode, everything else → run
+  const isStrength = workout?.type === 'strength';
+  setModalMode(isStrength ? 'strength' : 'run');
+
+  // Run fields
+  if(!isStrength) document.getElementById('wf-type').value = workout?.type||'z2';
   document.getElementById('wf-date').value = workout?.date||today();
   document.getElementById('wf-dist').value = workout?.dist||'';
   document.getElementById('wf-pace').value = workout?.pace||'';
   document.getElementById('wf-hr').value = workout?.hr||'';
   document.getElementById('wf-duration').value = workout?.duration||'';
+
+  // Strength fields
+  if(isStrength) {
+    const mg = document.getElementById('wf-muscle-group');
+    const sn = workout?.muscle_group||'Peito';
+    if(mg) mg.value = sn;
+    const sd = document.getElementById('wf-strength-duration');
+    if(sd) sd.value = workout?.duration||'';
+    const sh = document.getElementById('wf-strength-hr');
+    if(sh) sh.value = workout?.hr||'';
+  }
+
   document.getElementById('wf-notes').value = workout?.notes||'';
   selectedRpe = workout?.rpe||0;
   selectedFatigue = workout?.fatigue||0;
   document.querySelectorAll('#wf-rpe-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel',i+1===selectedRpe));
   document.querySelectorAll('#wf-fatigue-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel',i+1===selectedFatigue));
-  // Show delete only for real completed entries
   const delBtn = document.getElementById('delete-workout-btn');
   if(delBtn) delBtn.style.display = isEdit?'flex':'none';
 }
@@ -1027,8 +1108,10 @@ function paceToSec(p) {
 }
 function secToPace(s) { if(!s)return '--'; const m=Math.floor(s/60); const sec=Math.round(s%60); return `${m}:${String(sec).padStart(2,'0')}`; }
 function secToTime(s) { const h=Math.floor(s/3600); const m=Math.floor((s%3600)/60); return `${h}h${String(m).padStart(2,'0')}`; }
-function typeLabel(t) {
-  return {z2:'Z2',interval:'Intervalado',long:'Longão',progressivo:'Progressivo',tempo:'Tempo',strength:'Musculação',bike:'Bike',swim:'Natação',recovery:'Recuperação'}[t]||t;
+function typeLabel(t, w) {
+  const base = {z2:'Z2',interval:'Intervalado',long:'Longão',progressivo:'Progressivo',tempo:'Tempo',strength:'Musculação',bike:'Bike',swim:'Natação',recovery:'Recuperação'}[t]||t;
+  if(t === 'strength' && w?.muscle_group) return `Musculação · ${w.muscle_group}`;
+  return base;
 }
 function typeChipClass(t) {
   return {z2:'wchip-z2',interval:'wchip-interval',long:'wchip-long',progressivo:'wchip-tempo',tempo:'wchip-tempo',strength:'wchip-strength',bike:'wchip-z2',swim:'wchip-z2',recovery:'wchip-rest'}[t]||'wchip-rest';
@@ -1292,12 +1375,15 @@ function renderLog() {
 }
 
 function workoutItemHTML(w) {
-  const chip = `<span class="wchip ${typeChipClass(w.type)}">${typeLabel(w.type)}</span>`;
+  const chip = `<span class="wchip ${typeChipClass(w.type)}">${typeLabel(w.type, w)}</span>`;
   const stravaBadge = w.stravaId ? `<span style="font-size:8px;color:#FC4C02;font-family:var(--mono);margin-left:6px">STRAVA</span>` : '';
   const plannedBadge = w.planned ? `<span style="font-size:8px;color:var(--text3);font-family:var(--mono);margin-left:6px;border:0.5px dashed var(--border2);padding:1px 4px;border-radius:3px">PLAN</span>` : '';
   const missedBadge = w.missed ? `<span style="font-size:8px;color:var(--red);font-family:var(--mono);margin-left:6px">PERDIDO</span>` : '';
   const deleteAction = isCompleted(w) ? `deleteCompletedWorkout('${w.id}')` : `confirmDelete('${w.id}')`;
-  if(w.missed) return ''; // Don't show missed in log
+  if(w.missed) return '';
+  const titleLine = w.type === 'strength'
+    ? `<span style="font-weight:400;color:var(--text2)">${typeLabel(w.type, w)}${w.duration?' · '+w.duration+'min':''}</span>${stravaBadge}${plannedBadge}${missedBadge}`
+    : `${w.dist?`<span style="color:var(--text)">${w.dist} km</span> · `:''}<span style="font-weight:400;color:var(--text2)">${typeLabel(w.type, w)}</span>${stravaBadge}${plannedBadge}${missedBadge}`;
   return `<div class="workout-item" id="wi-${w.id}" data-id="${w.id}">
     <div class="workout-item-actions">
       <div class="wact-edit" onclick="editWorkout('${w.id}')">✏️ Editar</div>
@@ -1306,7 +1392,7 @@ function workoutItemHTML(w) {
     <div class="workout-item-inner" onclick="editWorkout('${w.id}')">
       <div class="workout-item-header">
         <div>
-          <div class="workout-item-title">${w.dist?`<span style="color:var(--text)">${w.dist} km</span> · `:''}<span style="font-weight:400;color:var(--text2)">${typeLabel(w.type)}</span>${stravaBadge}${plannedBadge}${missedBadge}</div>
+          <div class="workout-item-title">${titleLine}</div>
           <div class="workout-item-date">${formatDate(w.date)}</div>
         </div>
         ${chip}
@@ -1415,16 +1501,22 @@ function getCalDayContent(dateStr, isWork) {
   const workout = state.workouts.find(w=>w.date===dateStr&&!w.planned);
   const planned = state.workouts.find(w=>w.date===dateStr&&w.planned);
   if(workout) {
+    const text = workout.type === 'strength'
+      ? (workout.muscle_group || 'Musculação')
+      : (workout.dist ? workout.dist+'km' : typeLabel(workout.type));
     return {
-      text: workout.dist ? workout.dist+'km' : typeLabel(workout.type),
-      chip: `<span class="wchip ${typeChipClass(workout.type)}">${typeLabel(workout.type)}</span>`,
+      text,
+      chip: `<span class="wchip ${typeChipClass(workout.type)}">${typeLabel(workout.type, workout)}</span>`,
       extraStyle: ''
     };
   }
   if(planned) {
+    const text = planned.type === 'strength'
+      ? (planned.muscle_group || 'Musculação')
+      : (planned.dist ? planned.dist+'km' : typeLabel(planned.type));
     return {
-      text: planned.dist ? planned.dist+'km' : typeLabel(planned.type),
-      chip: `<span class="wchip ${typeChipClass(planned.type)}" style="opacity:0.7;border:0.5px dashed currentColor">${typeLabel(planned.type)}</span>`,
+      text,
+      chip: `<span class="wchip ${typeChipClass(planned.type)}" style="opacity:0.7;border:0.5px dashed currentColor">${typeLabel(planned.type, planned)}</span>`,
       extraStyle: 'opacity:0.85'
     };
   }
@@ -1451,13 +1543,19 @@ function suggestForDay(dateStr, isWork) {
 
 function renderPlannerSuggestion() {
   const wkm = kmThisWeek();
-  const wg = state.config.weekGoal||52;
+  const ws = weekStart(today());
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+  // Bug 1 fix: use actual planned volume for current week if plan exists, else config goal
+  const currentWeekPlanned = state.workouts.filter(w=>isPlanned(w)&&w.date>=ws&&w.date<=weStr);
+  const plannedKm = currentWeekPlanned.reduce((a,w)=>a+(w.dist||0),0);
+  const wg = plannedKm > 0 ? plannedKm : (state.config.weekGoal||52);
   const remaining = Math.max(0, wg - wkm);
   const adherence = planAdherence();
   const el = document.getElementById('planner-week-suggestion');
   el.innerHTML = `
     <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.9">
-      <span style="color:var(--teal)">✓ Executado:</span> ${wkm.toFixed(1)}km de ${wg}km (${Math.round(wkm/wg*100)}%)<br/>
+      <span style="color:var(--teal)">✓ Executado:</span> ${wkm.toFixed(1)}km de ${wg.toFixed(0)}km (${Math.round(wkm/wg*100)}%)<br/>
       ${remaining>0
         ? `<span style="color:var(--orange)">Faltam ${remaining.toFixed(1)}km</span> para a meta`
         : `<span style="color:var(--green)">Meta atingida! 🎉</span>`}
@@ -1917,21 +2015,16 @@ function previewWeekPlan() {
   const lastLong = c.longoes[0];
   if(lastLong && !planParams.long) planParams.long = Math.min(32, (parseFloat(lastLong.dist)||18)+2);
 
-  // Determine target week
-  const todayDate = today();
-  const todayDow = new Date(todayDate+'T12:00:00').getDay();
-  const currentWs = weekStart(todayDate);
-  const daysPassedInWeek = todayDow===0?6:todayDow-1;
-  const planNextWeek = todayDow===0||daysPassedInWeek>=5;
-  let targetWs;
-  if(planNextWeek) {
-    const nm = new Date(currentWs+'T12:00:00'); nm.setDate(nm.getDate()+7);
-    targetWs = nm.toISOString().split('T')[0];
-  } else { targetWs = currentWs; }
+  // Bug 2 fix: always use the SAME next-week bounds as renderNextWeekCard
+  // so generated workouts always land in the week shown in the card
+  const nwStart = new Date(weekStart(today())+'T12:00:00');
+  nwStart.setDate(nwStart.getDate()+7);
+  const nwEnd = new Date(nwStart); nwEnd.setDate(nwEnd.getDate()+6);
+  const targetWs = nwStart.toISOString().split('T')[0];
+  const planNextWeek = true; // always plan next week from Coach card
 
   const weekLabel = (() => {
-    const s=new Date(targetWs+'T12:00:00'), e=new Date(targetWs+'T12:00:00');
-    e.setDate(e.getDate()+6);
+    const s=new Date(targetWs+'T12:00:00'), e=new Date(nwEnd);
     return `${s.getDate()}/${s.getMonth()+1} – ${e.getDate()}/${e.getMonth()+1}`;
   })();
 
@@ -1941,7 +2034,7 @@ function previewWeekPlan() {
     const d=new Date(targetWs+'T12:00:00'); d.setDate(d.getDate()+i);
     const ds=d.toISOString().split('T')[0];
     const alreadyDone=state.workouts.find(w=>w.date===ds&&!w.planned);
-    weekDays.push({date:ds,name:dayNames[i],isWork:isWorkDay(ds),done:alreadyDone,isPast:ds<todayDate});
+    weekDays.push({date:ds,name:dayNames[i],isWork:isWorkDay(ds),done:alreadyDone,isPast:ds<today()});
   }
 
   const plan = generateWeekPlan(weekDays, kmGoal, feeling, notes, c, useLastWeekRef, planParams);
@@ -2396,27 +2489,46 @@ function openLogFromPlan() {
 const _origSaveWorkout = saveWorkout;
 function saveWorkout() {
   const completingDate = window._completingPlannedDate;
-  const dist = parseFloat(document.getElementById('wf-dist').value)||0;
   const editId = document.getElementById('edit-workout-id').value;
+  const isStrengthMode = _modalMode === 'strength';
 
   // If we're completing a planned workout, remove the planned entry first
   if(completingDate && !editId) {
     state.workouts = state.workouts.filter(w=>!(w.date===completingDate&&isPlanned(w)));
   }
 
-  // Call original save logic inline
-  const w = {
-    id: editId || Date.now().toString(),
-    type: document.getElementById('wf-type').value,
-    date: document.getElementById('wf-date').value,
-    dist: parseFloat(document.getElementById('wf-dist').value)||0,
-    pace: document.getElementById('wf-pace').value,
-    hr: parseInt(document.getElementById('wf-hr').value)||0,
-    duration: parseInt(document.getElementById('wf-duration').value)||0,
-    rpe: selectedRpe, fatigue: selectedFatigue,
-    notes: document.getElementById('wf-notes').value,
-    planned: false // always completed when saved from log
-  };
+  // Build workout object — branch on modalidade
+  let w;
+  if(isStrengthMode) {
+    const muscleGroup = document.getElementById('wf-muscle-group')?.value || 'Peito';
+    w = {
+      id: editId || Date.now().toString(),
+      type: 'strength',
+      date: document.getElementById('wf-date').value,
+      dist: 0,
+      pace: '',
+      hr: parseInt(document.getElementById('wf-strength-hr')?.value)||0,
+      duration: parseInt(document.getElementById('wf-strength-duration')?.value)||0,
+      rpe: selectedRpe, fatigue: selectedFatigue,
+      muscle_group: muscleGroup,
+      notes: document.getElementById('wf-notes').value,
+      planned: false
+    };
+  } else {
+    w = {
+      id: editId || Date.now().toString(),
+      type: document.getElementById('wf-type').value,
+      date: document.getElementById('wf-date').value,
+      dist: parseFloat(document.getElementById('wf-dist').value)||0,
+      pace: document.getElementById('wf-pace').value,
+      hr: parseInt(document.getElementById('wf-hr').value)||0,
+      duration: parseInt(document.getElementById('wf-duration').value)||0,
+      rpe: selectedRpe, fatigue: selectedFatigue,
+      notes: document.getElementById('wf-notes').value,
+      planned: false
+    };
+  }
+
   if(editId) {
     const idx=state.workouts.findIndex(x=>x.id===editId);
     if(idx>-1) state.workouts[idx]=w;
@@ -2431,7 +2543,6 @@ function saveWorkout() {
     window._completingPlannedDate = null;
   }
 
-  // Sort by date desc
   state.workouts.sort((a,b)=>b.date.localeCompare(a.date));
   save();
   closeModal('modal-log');
@@ -3010,6 +3121,11 @@ function workoutDurationMin(w) {
 function workoutICSTitle(w) {
   const icons = {z2:'🏃',long:'🏃',interval:'⚡',progressivo:'📈',tempo:'🔥',strength:'💪',bike:'🚴',swim:'🏊',recovery:'🚶'};
   const icon = icons[w.type]||'🏃';
+  if(w.type === 'strength') {
+    const mg = w.muscle_group || 'Musculação';
+    const dur = w.duration ? ` · ${w.duration}min` : '';
+    return `${icon} Musculação · ${mg}${dur}`;
+  }
   const label = typeLabel(w.type);
   const dist = w.dist > 0 ? ` — ${w.dist}km` : '';
   return `${icon} ${label}${dist}`;
