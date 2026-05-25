@@ -701,10 +701,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
       <div class="drawer-actions">
         <button class="btn btn-ghost" style="flex:1;font-size:12px" onclick="showDrawerEdit()">✏️ Editar</button>
-        <button class="btn btn-danger" style="font-size:12px;padding:10px 14px;display:none" id="dd-delete-btn">🗑</button>
+        <button class="btn btn-danger" style="font-size:12px;padding:10px 14px;display:none" id="dd-delete-btn" onclick="">🗑</button>
         <button class="btn btn-primary" style="flex:1;font-size:12px" id="dd-complete-btn" onclick="completeFromDrawer()">✓ Concluir</button>
       </div>
-      <button class="btn btn-danger btn-full" id="dd-delete-btn" style="display:none;margin-top:8px;font-size:12px" onclick="">🗑 Excluir registro</button>
+      <button class="btn btn-danger btn-full" id="dd-delete-planned-btn" style="display:none;margin-top:8px;font-size:12px" onclick="">🗑 Excluir treino planejado</button>
     </div>
     <!-- EDIT MODE -->
     <div id="dd-edit-mode" style="display:none">
@@ -2262,6 +2262,7 @@ function openDayDrawer(dateStr) {
     document.getElementById('dd-notes-section').style.display='none';
     document.getElementById('dd-complete-btn').style.display='none';
     document.getElementById('dd-delete-btn').style.display='none';
+    document.getElementById('dd-delete-planned-btn').style.display='none';
   } else {
     document.getElementById('dd-title').textContent = active.dist ? `${active.dist}km · ${typeLabel(active.type)}` : typeLabel(active.type);
     const badges = [];
@@ -2309,12 +2310,25 @@ function openDayDrawer(dateStr) {
     }
     const completeBtn = document.getElementById('dd-complete-btn');
     const deleteBtn = document.getElementById('dd-delete-btn');
+    const deletePlannedBtn = document.getElementById('dd-delete-planned-btn');
+
+    // Reset both delete buttons
+    deleteBtn.style.display = 'none';
+    deletePlannedBtn.style.display = 'none';
+    deletePlannedBtn.onclick = null;
+
     if(workout) {
+      // Completed workout: show inline 🗑, concluir disabled
       completeBtn.textContent='✓ Registrado'; completeBtn.style.opacity='0.5'; completeBtn.disabled=true;
-      deleteBtn.style.display='flex'; deleteBtn.onclick=()=>{ closeDrawer(); deleteCompletedWorkout(workout.id); };
+      deleteBtn.style.display='flex';
+      deleteBtn.onclick=()=>{ closeDayDrawer(); deleteCompletedWorkout(workout.id); };
+    } else if(planned) {
+      // Planned only: hide inline 🗑, show full-width "Excluir treino planejado"
+      completeBtn.textContent='✓ Concluir'; completeBtn.style.opacity='1'; completeBtn.disabled=false;
+      deletePlannedBtn.style.display='block';
+      deletePlannedBtn.onclick=()=>deletePlannedWorkout(planned.id);
     } else {
       completeBtn.textContent='✓ Concluir'; completeBtn.style.opacity='1'; completeBtn.disabled=false;
-      deleteBtn.style.display='none';
     }
     completeBtn.style.display='flex';
   }
@@ -2419,18 +2433,29 @@ function saveDrawerEdit() {
     notes, planned: existing?.planned ?? false
   });
 
-  // Optional rebalance: adjust other planned Z2 days this week
+  // Rebalance: distribute inverse of delta across other adjustable planned workouts
+  // Uses current planned volume as source of truth — never config.weekGoal
   if(rebalance) {
-    const ws = weekStart(dateStr);
-    const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
-    const weStr = we.toISOString().split('T')[0];
-    const wkm = state.workouts.filter(w=>w.date>=ws&&w.date<=weStr&&!w.planned).reduce((a,w)=>a+(w.dist||0),0);
-    const wg = state.config.weekGoal||52;
-    const gap = wg-wkm;
-    const adjustable = state.workouts.filter(w=>w.planned&&w.type==='z2'&&w.date>=ws&&w.date<=weStr&&w.date!==dateStr);
-    if(adjustable.length>0&&Math.abs(gap)>2) {
-      const adj = gap/adjustable.length;
-      adjustable.forEach(w=>{ w.dist=Math.max(5,Math.round((w.dist||8)+adj)); });
+    const oldDist = existing?.dist || 0;
+    const delta = dist - oldDist; // positive = user added km, negative = user reduced
+    if(Math.abs(delta) >= 1) {
+      const ws = weekStart(dateStr);
+      const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+      const weStr = we.toISOString().split('T')[0];
+      // Adjustable: other planned running workouts this week (not the one just edited)
+      const adjustable = state.workouts.filter(w=>
+        isPlanned(w) &&
+        ['z2','long','progressivo','interval','tempo','recovery'].includes(w.type) &&
+        w.dist > 0 &&
+        w.date >= ws && w.date <= weStr &&
+        w.date !== dateStr
+      );
+      if(adjustable.length > 0) {
+        const offsetPerDay = (-delta) / adjustable.length; // inverse delta, split evenly
+        adjustable.forEach(w => {
+          w.dist = Math.max(5, Math.round(w.dist + offsetPerDay));
+        });
+      }
     }
   }
 
@@ -2581,6 +2606,22 @@ function deleteCompletedWorkout(id) {
   save();
   showToast('Treino excluído');
   renderDashboard(); renderLog(); renderPlanner();
+}
+
+function deletePlannedWorkout(id) {
+  const w = state.workouts.find(x=>x.id===id);
+  if(!w || !isPlanned(w)) return;
+  if(!confirm(`Excluir treino planejado "${typeLabel(w.type, w)}${w.dist?' — '+w.dist+'km':''}"\ndo dia ${formatDate(w.date)}?`)) return;
+
+  // Remove only this planned entry — no rebalance, no cascade
+  state.workouts = state.workouts.filter(x=>x.id!==id);
+  save();
+  closeDayDrawer();
+  showToast('Treino planejado removido');
+  // Refresh all surfaces that show planned data
+  renderDashboard();
+  renderLog();
+  renderPlanner(); // updates calendar cells, "Semana Atual" card and "Próxima Semana" card
 }
 
 // ==================== CONSERVATIVE PLAN PREVIEW ====================
