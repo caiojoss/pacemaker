@@ -682,6 +682,47 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <button class="btn btn-primary btn-full" onclick="saveOpenAIKey()">Salvar e testar conexão</button>
         <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="clearOpenAIKey()">Remover API key</button>
       </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="label" style="margin-bottom:12px">🧠 Memória do Atleta</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">O Coach usa essas informações para personalizar respostas e insights.</div>
+        <div class="form-group">
+          <label class="form-label">Objetivo principal</label>
+          <select class="form-select" id="cfg-ap-goal">
+            <option value="">Não definido</option>
+            <option value="first_marathon">Completar minha primeira maratona</option>
+            <option value="sub4">Maratona sub 4 horas</option>
+            <option value="sub3h30">Maratona sub 3h30</option>
+            <option value="pr">Bater meu PR</option>
+            <option value="finish">Só terminar bem</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tempo alvo (ex: 3:58)</label>
+          <input type="text" class="form-input" id="cfg-ap-target-time" placeholder="3:58"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Preferência de musculação</label>
+          <select class="form-select" id="cfg-ap-strength-pref">
+            <option value="ABC">ABC (Peito/Costas/Pernas)</option>
+            <option value="AB">AB (Superior/Inferior)</option>
+            <option value="PPL">Push / Pull / Legs</option>
+            <option value="">Sem preferência</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Longão máximo preferido (km)</label>
+          <input type="number" class="form-input" id="cfg-ap-longrun-pref" placeholder="32 (0 = automático)"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Histórico de lesões</label>
+          <textarea class="form-textarea" id="cfg-ap-injuries" rows="2" placeholder="Ex: tendinite no joelho direito em 2023, síndrome do IT band"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observações para o Coach</label>
+          <textarea class="form-textarea" id="cfg-ap-notes" rows="2" placeholder="Ex: prefiro treinar de manhã, odeio esteira, tremo no km 35..."></textarea>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="saveAthleteProfile()">Salvar memória do atleta</button>
+      </div>
       <div class="card">
         <div class="label" style="margin-bottom:10px">Dados do app</div>
         <button class="btn btn-danger btn-full" onclick="if(confirm('Apagar todos os treinos? Isso não pode ser desfeito.'))clearData()">Limpar todos os treinos</button>
@@ -997,7 +1038,16 @@ const DB_KEY = 'pacemaker_v2';
 let state = {
   config: { raceDate:'', raceName:'Maratona', monthGoal:190, weekGoal:52, scaleStart:'', name:'Caio', weight:110, height:175 },
   workouts: [],
-  chatHistory: []
+  chatHistory: [],
+  athleteProfile: {
+    goal: '',           // 'sub4' | 'finish' | 'pr' | 'sub3h30' | ''
+    targetTime: '',     // '3:58'
+    injuryHistory: '',  // free text
+    longRunPref: 0,     // preferred max long run km (0 = auto)
+    strengthPref: 'ABC',// 'ABC' | 'AB' | 'Push/Pull/Legs'
+    notes: '',          // free observations
+    updatedAt: ''
+  }
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
 let plannerOffset = 0;
@@ -1928,25 +1978,134 @@ function clearOpenAIKey() {
 // ==================== COACH AI (MOCK INTELIGENTE) ====================
 function buildCoachContext() {
   const days = state.config.raceDate ? daysBetween(today(), state.config.raceDate) : '--';
-  const wkm = kmThisWeek().toFixed(1);       // completed only
-  const mkm = kmThisMonth().toFixed(0);       // completed only
+  const wkm = kmThisWeek().toFixed(1);
+  const mkm = kmThisMonth().toFixed(0);
   const rs = readinessScore();
   const pred = predictMarathon();
-  // Last week completed km
   const currentWs = weekStart(today());
   const lastWs = new Date(currentWs+'T12:00:00'); lastWs.setDate(lastWs.getDate()-7);
   const lastWe = new Date(currentWs+'T12:00:00'); lastWe.setDate(lastWe.getDate()-1);
+  const twoWsAgo = new Date(lastWs); twoWsAgo.setDate(twoWsAgo.getDate()-7);
   const lastWeekKm = kmCompleted(lastWs.toISOString().split('T')[0], lastWe.toISOString().split('T')[0]).toFixed(1);
+  const twoWeeksKm = kmCompleted(twoWsAgo.toISOString().split('T')[0], lastWs.toISOString().split('T')[0]-1).toFixed(1);
   const longoes = state.workouts.filter(w=>w.type==='long'&&isCompleted(w)&&w.dist>0&&w.pace).sort((a,b)=>b.date.localeCompare(a.date));
   const tomorrowStr = new Date(Date.now()+86400000).toISOString().split('T')[0];
   const adh = planAdherence();
-  return {days, wkm, mkm, pred, rs, lastWeekKm, longoes, tomorrowIsWork:isWorkDay(tomorrowStr), adherence:adh};
+
+  // New: strength sessions this week
+  const ws = currentWs;
+  const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
+  const weStr = we.toISOString().split('T')[0];
+  const strengthSessions = state.workouts.filter(w=>w.type==='strength'&&isCompleted(w)&&w.date>=ws&&w.date<=weStr).length;
+
+  // New: fatigue trend (avg of last 3 completed workouts)
+  const recent3 = state.workouts.filter(w=>isCompleted(w)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3);
+  const fatigueTrend = recent3.length>0 ? (recent3.reduce((a,w)=>a+(w.fatigue||0),0)/recent3.length).toFixed(1) : null;
+  const rpeTrend = recent3.length>0 ? (recent3.reduce((a,w)=>a+(w.rpe||0),0)/recent3.length).toFixed(1) : null;
+
+  // New: volume trend [this, last, two weeks ago]
+  const volumeTrend = [parseFloat(wkm), parseFloat(lastWeekKm), parseFloat(twoWeeksKm)];
+
+  // New: pace trend from last 3 longões (sec/km)
+  const paceTrend = longoes.slice(0,3).map(w=>paceToSec(w.pace)).filter(s=>s>0);
+
+  // New: numeric days to race
+  const daysNumeric = state.config.raceDate ? daysBetween(today(), state.config.raceDate) : null;
+
+  // New: athlete name and profile
+  const athleteName = state.config.name || 'Atleta';
+  const profile = state.athleteProfile || {};
+
+  return {
+    days, wkm, mkm, pred, rs, lastWeekKm, longoes,
+    tomorrowIsWork: isWorkDay(tomorrowStr), adherence: adh,
+    strengthSessions, fatigueTrend, rpeTrend,
+    volumeTrend, paceTrend, daysNumeric,
+    athleteName, profile
+  };
+}
+
+function generateCoachInsights(c) {
+  const insights = [];
+
+  // Volume trend
+  if(c.volumeTrend[1] > 0) {
+    const delta = c.volumeTrend[0] - c.volumeTrend[1];
+    const pct = Math.round(Math.abs(delta) / c.volumeTrend[1] * 100);
+    if(pct >= 10) {
+      insights.push(delta > 0
+        ? `📈 Volume +${pct}% vs semana passada (${c.volumeTrend[1]}→${c.volumeTrend[0]}km)`
+        : `📉 Volume −${pct}% vs semana passada (${c.volumeTrend[1]}→${c.volumeTrend[0]}km)`);
+    }
+  }
+
+  // Fatigue / overtraining risk
+  if(c.fatigueTrend !== null) {
+    const f = parseFloat(c.fatigueTrend);
+    const r = parseFloat(c.rpeTrend||0);
+    if(f >= 4 || r >= 8) {
+      insights.push(`⚠️ Fadiga alta (${c.fatigueTrend}/5 · RPE ${c.rpeTrend}/10) — priorize recuperação`);
+    } else if(f <= 2 && r <= 5) {
+      insights.push(`✅ Corpo bem recuperado (fadiga ${c.fatigueTrend}/5) — pronto para carga`);
+    }
+  }
+
+  // Readiness
+  if(c.rs < 50) insights.push(`🔴 Prontidão baixa (${c.rs}/100) — considere treino leve hoje`);
+  else if(c.rs >= 80) insights.push(`🟢 Prontidão alta (${c.rs}/100) — bom dia para treino de qualidade`);
+
+  // Adherence
+  if(c.adherence !== null) {
+    if(c.adherence < 60) insights.push(`📋 Aderência ${c.adherence}% esta semana — abaixo do ideal`);
+    else if(c.adherence >= 90) insights.push(`📋 Aderência ${c.adherence}% — excelente consistência`);
+  }
+
+  // Race proximity phases
+  if(c.daysNumeric !== null) {
+    if(c.daysNumeric <= 7) insights.push(`🏁 Semana da prova — reduza volume, preserve energia`);
+    else if(c.daysNumeric <= 21) insights.push(`🏁 ${c.daysNumeric} dias para a prova — fase de polimento, sem cargas novas`);
+    else if(c.daysNumeric <= 42) insights.push(`🎯 ${c.daysNumeric} dias — bloco crítico de construção`);
+  }
+
+  // Pace trend (improving?)
+  if(c.paceTrend.length >= 2) {
+    const diff = c.paceTrend[1] - c.paceTrend[0]; // positive = getting faster (lower sec)
+    if(diff >= 15) insights.push(`⚡ Pace dos longões melhorou ${Math.round(diff)}s/km — boa evolução`);
+    else if(diff <= -20) insights.push(`📉 Pace dos longões regrediu ${Math.round(Math.abs(diff))}s/km — revise a carga`);
+  }
+
+  // Strength balance
+  if(c.strengthSessions === 0 && parseFloat(c.wkm) > 0) {
+    insights.push(`💪 Nenhuma musculação esta semana — considere incluir`);
+  }
+
+  return insights.slice(0, 4); // max 4 insights to keep UI clean
 }
 
 function renderCoachContext() {
   const c = buildCoachContext();
+
+  // Status bar
   document.getElementById('coach-context-box').textContent =
-    `Coach offline · ${c.days} dias · ${c.wkm}km executados esta semana · Semana passada: ${c.lastWeekKm}km · Prontidão: ${c.rs}/100${c.adherence!==null?' · Aderência: '+c.adherence+'%':''}`;
+    `${c.athleteName} · ${c.days} dias · ${c.wkm}km executados · Semana passada: ${c.lastWeekKm}km · Prontidão: ${c.rs}/100${c.adherence!==null?' · Aderência: '+c.adherence+'%':''}`;
+
+  // Insights block
+  const insights = generateCoachInsights(c);
+  let insightsEl = document.getElementById('coach-insights');
+  if(!insightsEl) {
+    insightsEl = document.createElement('div');
+    insightsEl.id = 'coach-insights';
+    insightsEl.style.cssText = 'margin-bottom:10px';
+    const ctxBox = document.getElementById('coach-context-box');
+    ctxBox.parentNode.insertBefore(insightsEl, ctxBox.nextSibling);
+  }
+  if(insights.length > 0) {
+    insightsEl.innerHTML = insights.map(ins=>`
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text2);padding:5px 10px;border-left:2px solid var(--border2);margin-bottom:4px;line-height:1.4">${ins}</div>
+    `).join('');
+  } else {
+    insightsEl.innerHTML = '';
+  }
 
   // Smart km suggestion
   const suggested = suggestWeekKm();
@@ -2855,14 +3014,33 @@ const mockResponses = [
     reply(c){ const isW=c.tomorrowIsWork; return `Amanhã é ${isW?'dia de TRABALHO':'dia de FOLGA'}. ${isW?'Sugestão: musculação de manhã (40min, foco em core e glúteos) + corrida Z2 à noite (8–10km, FC <140bpm).':'Ótimo para treino de qualidade. Sugestão: progressivo 12–14km ou tiros, dependendo do seu nível de fadiga.'} Prontidão atual: ${c.rs}/100.`; }},
   { keys:['progresso','evolução','evolucao','como estou'],
     reply(c){ const pred=predictMarathon(); return `Resumo atual: ${c.mkm}km este mês (meta ${state.config.monthGoal||190}km) · ${c.wkm}km esta semana · Previsão maratona: ${pred?secToTime(pred):'registre longões para calcular'} · Prontidão: ${c.rs}/100 · ${c.days} dias até a prova. ${c.lastWeekKm>0?`Semana passada: ${c.lastWeekKm}km.`:''}`; }},
+  { keys:['musculação','musculacao','força','forca','peito','costas','perna','academia'],
+    reply(c){ const s=c.strengthSessions; return `${s===0?'Você não fez musculação esta semana ainda.':s===1?'1 sessão de musculação esta semana.':s+' sessões de musculação esta semana.'} A força complementa a corrida: glúteos e core protegem os joelhos e melhoram a economia de movimento. Mínimo 2 sessões/semana na fase de construção. Rotação A (Peito/Tríceps) → B (Costas/Bíceps) → C (Pernas) garante recuperação entre grupos.`; }},
+  { keys:['recuperação','recuperacao','descanso','rest','dormir','sono'],
+    reply(c){ const f=parseFloat(c.fatigueTrend||0); const override=f>=4||c.rs<50;
+      return override
+        ? `⚠️ Com fadiga ${c.fatigueTrend}/5 e prontidão ${c.rs}/100, discordo de treinar pesado hoje. Recuperação ativa: caminhada, bike leve ou descanso total. O ganho acontece no descanso — treinar com fadiga alta aumenta risco de lesão e regride a performance.`
+        : `Recuperação adequada: ${c.rs>=70?'você está bem recuperado. Pode treinar normalmente hoje.':'considere reduzir intensidade. Priorize sono (7-8h), hidratação e nutrição pós-treino nas primeiras 45min.'}`; }},
+  { keys:['lesão','lesao','machucado','dor joelho','dor tornozelo','inflamação'],
+    reply(c){ const p=c.profile||{}; const hist=p.injuryHistory;
+      return `${hist?`Seu histórico aponta: ${hist}. `:''}Protocolo para dor aguda: PARE imediatamente, não force. 48-72h de repouso, gelo 20min a cada 2h nas primeiras 24h. Se persistir: fisiatra antes de retomar. Nunca heróe com dor articular — 1 semana de pausa é melhor que 6 semanas de recuperação.`; }},
 ];
 
 function getMockReply(text) {
   const c = buildCoachContext();
-  for(const r of mockResponses) {
-    if(r.keys.some(k=>text.includes(k))) return r.reply(c);
+  const lc = text.toLowerCase();
+
+  // Fatigue override: if readiness < 50 and asking about training, Coach disagrees
+  const trainingKeywords = ['treino','correr','corrida','longão','tiro','interval','forte','pesado'];
+  const isAskingToTrain = trainingKeywords.some(k=>lc.includes(k));
+  if(isAskingToTrain && c.rs < 50) {
+    return `⚠️ Antes de responder: sua prontidão está em ${c.rs}/100 com fadiga média ${c.fatigueTrend||'--'}/5. Recomendo fortemente descanso ou atividade muito leve hoje. Treinar com prontidão baixa aumenta risco de lesão e atrasa a recuperação. Posso sugerir um protocolo de recuperação ativa se quiser.`;
   }
-  return `Com ${c.wkm}km esta semana e prontidão ${c.rs}/100, você está${c.rs>=70?' em boa forma para treinar':' precisando monitorar a fadiga'}. ${c.days!=='--'?`Faltam ${c.days} dias para a maratona — `:''}me diz mais especificamente o que quer ajustar: volume, intensidade, recuperação ou estratégia de prova?`;
+
+  for(const r of mockResponses) {
+    if(r.keys.some(k=>lc.includes(k))) return r.reply(c);
+  }
+  return `${c.athleteName}, com ${c.wkm}km esta semana e prontidão ${c.rs}/100, você está${c.rs>=70?' em boa forma para treinar':' precisando monitorar a fadiga'}. ${c.days!=='--'?`Faltam ${c.days} dias para a maratona — `:''}me diz mais especificamente o que quer ajustar: volume, intensidade, recuperação ou estratégia de prova?`;
 }
 
 function quickMsg(text) { document.getElementById('chat-input').value=text; sendCoach(); }
@@ -2879,10 +3057,37 @@ function loadConfig() {
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
   loadOpenAIKeyField();
-  // Restore Strava client ID field
   const cid = localStorage.getItem('pacemaker_strava_cid');
   if(cid) document.getElementById('cfg-strava-id').value = cid;
   updateStravaBadge();
+  // Athlete profile fields
+  const p = state.athleteProfile||{};
+  const apGoal = document.getElementById('cfg-ap-goal');
+  const apTarget = document.getElementById('cfg-ap-target-time');
+  const apStrength = document.getElementById('cfg-ap-strength-pref');
+  const apLong = document.getElementById('cfg-ap-longrun-pref');
+  const apInjuries = document.getElementById('cfg-ap-injuries');
+  const apNotes = document.getElementById('cfg-ap-notes');
+  if(apGoal) apGoal.value = p.goal||'';
+  if(apTarget) apTarget.value = p.targetTime||'';
+  if(apStrength) apStrength.value = p.strengthPref||'ABC';
+  if(apLong) apLong.value = p.longRunPref||'';
+  if(apInjuries) apInjuries.value = p.injuryHistory||'';
+  if(apNotes) apNotes.value = p.notes||'';
+}
+
+function saveAthleteProfile() {
+  state.athleteProfile = {
+    goal:          document.getElementById('cfg-ap-goal')?.value||'',
+    targetTime:    document.getElementById('cfg-ap-target-time')?.value||'',
+    strengthPref:  document.getElementById('cfg-ap-strength-pref')?.value||'ABC',
+    longRunPref:   parseInt(document.getElementById('cfg-ap-longrun-pref')?.value)||0,
+    injuryHistory: document.getElementById('cfg-ap-injuries')?.value||'',
+    notes:         document.getElementById('cfg-ap-notes')?.value||'',
+    updatedAt:     today()
+  };
+  save();
+  showToast('Memória do atleta salva!');
 }
 
 function saveConfig() {
