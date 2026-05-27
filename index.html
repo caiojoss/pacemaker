@@ -218,6 +218,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .overflow-item:active{background:var(--surface3);color:var(--text)}
 .overflow-item.danger{color:var(--red)}
 .overflow-item + .overflow-item{border-top:0.5px solid var(--border)}
+/* COLLAPSIBLE */
+.collapsible-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;user-select:none;-webkit-user-select:none;border-radius:var(--r);background:var(--surface);border:0.5px solid var(--border);margin-bottom:0;transition:border-color 0.15s}
+.collapsible-header:active{background:var(--surface2)}
+.collapsible-header.open{border-radius:var(--r) var(--r) 0 0;border-bottom-color:transparent}
+.collapsible-title{font-size:13px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.collapsible-chevron{font-size:11px;color:var(--text3);transition:transform 0.25s;display:inline-block}
+.collapsible-header.open .collapsible-chevron{transform:rotate(180deg)}
+.collapsible-body{max-height:0;overflow:hidden;transition:max-height 0.3s ease;background:var(--surface);border:0.5px solid var(--border);border-top:none;border-radius:0 0 var(--r) var(--r);margin-bottom:12px}
+.collapsible-body.open{max-height:800px}
+.collapsible-body-inner{padding:16px}
 /* STRAVA */
 .strava-btn{background:#FC4C02;color:#fff;border:none;border-radius:var(--r-sm);padding:11px 18px;font-family:var(--display);font-size:13px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity 0.15s}
 .strava-btn:active{opacity:0.85}
@@ -517,38 +527,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 
     <!-- COACH -->
     <div id="sec-coach" class="section">
+      <!-- Header with clear button -->
       <div class="section-title">
         <span>Coach AI</span>
-        <div id="coach-ai-badge" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--border2);color:var(--accent);background:var(--accent-dim)">offline</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;color:var(--text3)" onclick="clearCoachHistory()" title="Limpar conversa">🗑</button>
+          <div id="coach-ai-badge" style="font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:20px;border:0.5px solid var(--border2);color:var(--accent);background:var(--accent-dim)">offline</div>
+        </div>
       </div>
+
+      <!-- Status context -->
       <div class="coach-context" id="coach-context-box">Carregando contexto...</div>
-      <!-- PLAN THIS WEEK CARD -->
-      <div class="card card-accent" id="plan-week-card" style="margin-bottom:12px">
-        <div class="label" style="margin-bottom:6px">🗓 Planejar semana</div>
-        <div id="plan-week-target-label" style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-bottom:10px"></div>
-        <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label">Meta de km <span id="plan-km-suggestion" style="color:var(--teal);font-size:9px;margin-left:4px"></span></label>
-          <input type="number" class="form-input" id="plan-km-goal" placeholder="52" style="font-size:14px"/>
-        </div>
-        <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label">Disposição do corpo hoje</label>
-          <select class="form-select" id="plan-feeling">
-            <option value="great">Ótimo — corpo descansado, motivado</option>
-            <option value="good">Bem — normal, sem queixas</option>
-            <option value="tired">Cansado — perna pesada, dormiu mal</option>
-            <option value="pain">Com dor ou desconforto</option>
-          </select>
-        </div>
-        <div class="toggle-row" style="margin-bottom:10px">
-          <span class="toggle-label">Usar semana passada como referência</span>
-          <div class="toggle" id="toggle-ref" onclick="toggleRef()"><div class="toggle-thumb"></div></div>
-        </div>
-        <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label">Algo específico? (opcional)</label>
-          <textarea class="form-textarea" id="plan-notes" rows="2" placeholder="Ex: tenho prova domingo, quero priorizar tiros..."></textarea>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="previewWeekPlan()">Ver preview do plano →</button>
-      </div>
+
+      <!-- Quick suggestion chips — always visible -->
       <div class="suggestions" id="coach-sugs">
         <div class="sug" onclick="quickMsg('Qual treino devo fazer amanhã?')">Treino amanhã</div>
         <div class="sug" onclick="quickMsg('Sinto dor no joelho. O que fazer?')">Dor no joelho</div>
@@ -557,11 +548,46 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <div class="sug" onclick="quickMsg('Fiz o muro no km 30 ontem. Como evitar?')">Muro km 30</div>
         <div class="sug" onclick="quickMsg('Estou com fadiga alta esta semana. Devo treinar?')">Fadiga alta</div>
       </div>
-      <div class="chat-wrap">
+
+      <!-- Chat — primary interaction area -->
+      <div class="chat-wrap" style="margin-bottom:14px">
         <div class="chat-msgs" id="chat-msgs"></div>
         <div class="chat-input-row">
           <input class="chat-input" id="chat-input" placeholder="Pergunte ao seu coach..." onkeydown="if(event.key==='Enter')sendCoach()"/>
           <button class="chat-send" onclick="sendCoach()">→</button>
+        </div>
+      </div>
+
+      <!-- Planning — collapsible, closed by default -->
+      <div class="collapsible-header" id="plan-collapsible-header" onclick="togglePlanSection()">
+        <span class="collapsible-title">📅 Planejamento semanal</span>
+        <span class="collapsible-chevron">▼</span>
+      </div>
+      <div class="collapsible-body" id="plan-collapsible-body">
+        <div class="collapsible-body-inner">
+          <div id="plan-week-target-label" style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-bottom:10px"></div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-label">Meta de km <span id="plan-km-suggestion" style="color:var(--teal);font-size:9px;margin-left:4px"></span></label>
+            <input type="number" class="form-input" id="plan-km-goal" placeholder="52" style="font-size:14px"/>
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-label">Disposição do corpo hoje</label>
+            <select class="form-select" id="plan-feeling">
+              <option value="great">Ótimo — corpo descansado, motivado</option>
+              <option value="good">Bem — normal, sem queixas</option>
+              <option value="tired">Cansado — perna pesada, dormiu mal</option>
+              <option value="pain">Com dor ou desconforto</option>
+            </select>
+          </div>
+          <div class="toggle-row" style="margin-bottom:10px">
+            <span class="toggle-label">Usar semana passada como referência</span>
+            <div class="toggle" id="toggle-ref" onclick="toggleRef()"><div class="toggle-thumb"></div></div>
+          </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label class="form-label">Algo específico? (opcional)</label>
+            <textarea class="form-textarea" id="plan-notes" rows="2" placeholder="Ex: tenho prova domingo, quero priorizar tiros..."></textarea>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="previewWeekPlan()">Ver preview do plano →</button>
         </div>
       </div>
     </div>
@@ -1490,7 +1516,7 @@ function renderPlanner() {
     const div = document.createElement('div');
     div.className = `cal-day ${isWork?'work':'off'}${isTod?' today':''}`;
     const content = getCalDayContent(dateStr, isWork);
-    div.innerHTML = `<div class="cal-day-num">${day}</div><div class="cal-day-type">${isWork?'Trab':'Folga'}</div><div class="cal-workout-text" style="${content.extraStyle}">${content.text}</div>${content.chip}`;
+    div.innerHTML = `<div class="cal-day-num">${day}</div><div class="cal-day-type">${isWork?'Trab':'Folga'}</div>${content.text?`<div class="cal-workout-text" style="${content.extraStyle}">${content.text}</div>`:''}${content.chip||''}`;
     div.onclick = ()=> openDayDrawer(dateStr);
     grid.appendChild(div);
   }
@@ -1509,8 +1535,9 @@ function renderPlanner() {
 }
 
 function getCalDayContent(dateStr, isWork) {
-  const workout = state.workouts.find(w=>w.date===dateStr&&!w.planned);
-  const planned = state.workouts.find(w=>w.date===dateStr&&w.planned);
+  const workout = state.workouts.find(w=>w.date===dateStr&&!w.planned&&!w.missed);
+  const planned = state.workouts.find(w=>w.date===dateStr&&isPlanned(w));
+
   if(workout) {
     const text = workout.type === 'strength'
       ? (workout.muscle_group || 'Musculação')
@@ -1531,12 +1558,8 @@ function getCalDayContent(dateStr, isWork) {
       extraStyle: 'opacity:0.85'
     };
   }
-  const sug = suggestForDay(dateStr, isWork);
-  return {
-    text: sug.short,
-    chip: `<span class="wchip ${sug.chipClass}" style="opacity:0.4">${sug.label}</span>`,
-    extraStyle: 'opacity:0.6'
-  };
+  // No workout, no plan — empty cell, no labels
+  return { text: '', chip: '', extraStyle: '' };
 }
 
 function suggestForDay(dateStr, isWork) {
@@ -1981,6 +2004,23 @@ function toggleRef() {
   useLastWeekRef = !useLastWeekRef;
   const el = document.getElementById('toggle-ref');
   if(el) el.classList.toggle('on', useLastWeekRef);
+}
+
+function togglePlanSection() {
+  const header = document.getElementById('plan-collapsible-header');
+  const body   = document.getElementById('plan-collapsible-body');
+  if(!header || !body) return;
+  header.classList.toggle('open');
+  body.classList.toggle('open');
+}
+
+function clearCoachHistory() {
+  if(!confirm('Limpar histórico do Coach?\n\nMensagens serão apagadas. Planner e treinos não são afetados.')) return;
+  state.chatHistory = [];
+  save();
+  // Re-init with welcome message — chips stay in DOM, no change needed
+  renderCoachContext();
+  showToast('Conversa limpa');
 }
 
 // ==================== ADVANCED PARAMS ====================
