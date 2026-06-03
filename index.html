@@ -14,6 +14,56 @@
 <title>Pacemaker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<!-- Firebase SDK v10 modular via CDN -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, setDoc, getDoc, enableIndexedDbPersistence }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+// Firebase config — replace with your project values from console.firebase.google.com
+const FB_CONFIG = {
+  apiKey:            "REPLACE_API_KEY",
+  authDomain:        "REPLACE_AUTH_DOMAIN",
+  projectId:         "REPLACE_PROJECT_ID",
+  storageBucket:     "REPLACE_STORAGE_BUCKET",
+  messagingSenderId: "REPLACE_MSG_SENDER_ID",
+  appId:             "REPLACE_APP_ID"
+};
+
+const SCHEMA_VERSION = 1;
+
+// Initialize Firebase
+const fbApp  = initializeApp(FB_CONFIG);
+const fbAuth = getAuth(fbApp);
+const fbDb   = getFirestore(fbApp);
+
+// Enable offline persistence (Firestore caches to IndexedDB)
+enableIndexedDbPersistence(fbDb).catch(err => {
+  if(err.code === 'failed-precondition') console.warn('Firestore persistence: multiple tabs open');
+  else if(err.code === 'unimplemented') console.warn('Firestore persistence: browser not supported');
+});
+
+// ── Expose to global scope so existing JS can call them ──
+window._fbAuth    = fbAuth;
+window._fbDb      = fbDb;
+window._fbDoc     = doc;
+window._fbSetDoc  = setDoc;
+window._fbGetDoc  = getDoc;
+window._fbGoogleProvider = new GoogleAuthProvider();
+
+// ── Auth state listener ──
+onAuthStateChanged(fbAuth, user => {
+  if(user) {
+    state.user = { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL };
+  } else {
+    state.user = null;
+  }
+  if(typeof renderAuthCard === 'function') renderAuthCard();
+  if(typeof renderSyncIndicator === 'function') renderSyncIndicator();
+});
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
@@ -306,6 +356,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   <div class="app-header">
     <div class="logo"><div class="logo-pulse"></div>PACEMAKER</div>
     <div class="header-right">
+      <div id="sync-indicator" style="font-family:var(--mono);font-size:10px;color:var(--text3);display:none"></div>
       <div class="race-chip" id="header-countdown">-- dias</div>
     </div>
   </div>
@@ -595,6 +646,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
     <!-- SETTINGS -->
     <div id="sec-settings" class="section">
       <div class="section-title"><span>Configurações</span></div>
+      <!-- PHASE B: Auth card -->
+      <div class="card" style="margin-bottom:16px" id="auth-card">
+        <div class="label" style="margin-bottom:8px">☁️ Conta e sincronização</div>
+        <div id="auth-logged-out">
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">Faça login para sincronizar seus treinos entre dispositivos.</div>
+          <button class="btn btn-primary btn-full" onclick="firebaseLogin()" style="background:#4285F4;gap:8px">
+            <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.35-8.16 2.35-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Entrar com Google
+          </button>
+        </div>
+        <div id="auth-logged-in" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <img id="auth-avatar" src="" width="36" height="36" style="border-radius:50%;display:none"/>
+            <div>
+              <div id="auth-name" style="font-size:13px;font-weight:600"></div>
+              <div id="auth-email" style="font-family:var(--mono);font-size:10px;color:var(--text3)"></div>
+            </div>
+          </div>
+          <div id="sync-status-text" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:10px"></div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" style="flex:1;font-size:12px" onclick="syncNow()">🔄 Sincronizar agora</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:10px 14px" onclick="firebaseLogout()">Sair</button>
+          </div>
+        </div>
+      </div>
       <div class="card" style="margin-bottom:16px">
         <div class="label" style="margin-bottom:12px">Dados da corrida</div>
         <div class="form-group">
@@ -1040,14 +1116,15 @@ let state = {
   workouts: [],
   chatHistory: [],
   athleteProfile: {
-    goal: '',           // 'sub4' | 'finish' | 'pr' | 'sub3h30' | ''
-    targetTime: '',     // '3:58'
-    injuryHistory: '',  // free text
-    longRunPref: 0,     // preferred max long run km (0 = auto)
-    strengthPref: 'ABC',// 'ABC' | 'AB' | 'Push/Pull/Legs'
-    notes: '',          // free observations
+    goal: '',
+    targetTime: '',
+    injuryHistory: '',
+    longRunPref: 0,
+    strengthPref: 'ABC',
+    notes: '',
     updatedAt: ''
-  }
+  },
+  user: null  // { uid, displayName, email, photoURL } — set by Firebase auth listener
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
 let plannerOffset = 0;
@@ -1070,7 +1147,6 @@ function setModalMode(mode) {
   }
 }
 
-function save() { localStorage.setItem(DB_KEY, JSON.stringify(state)); }
 function load() {
   const d = localStorage.getItem(DB_KEY);
   if (d) { try { state = {...state, ...JSON.parse(d)}; } catch(e){} }
@@ -3603,6 +3679,193 @@ function exportMonthToCalendar() {
   downloadICS(ics, `pacemaker_${monthName.replace(' ','_')}.ics`);
   showToast(`📅 ${planned.length} treino(s) do mês exportados!`);
 }
+
+// ==================== FIREBASE CLOUD SYNC ====================
+const SCHEMA_VERSION = 1;
+let _syncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'offline' | 'error'
+
+function setSyncStatus(status, msg) {
+  _syncStatus = status;
+  const indicator = document.getElementById('sync-indicator');
+  const statusText = document.getElementById('sync-status-text');
+  const labels = {
+    idle:    { icon:'',   text:'',                       color:'var(--text3)' },
+    syncing: { icon:'🔄', text:'Sincronizando...',        color:'var(--blue)'  },
+    synced:  { icon:'☁️', text:'Sincronizado',            color:'var(--teal)'  },
+    offline: { icon:'📴', text:'Offline — salvo local',  color:'var(--orange)'},
+    error:   { icon:'⚠️', text:msg||'Erro de sync',      color:'var(--red)'   },
+  };
+  const l = labels[status];
+  if(indicator) {
+    indicator.textContent = l.icon ? `${l.icon} ${l.text}` : '';
+    indicator.style.color = l.color;
+    indicator.style.display = l.icon ? 'block' : 'none';
+  }
+  if(statusText) statusText.textContent = l.text;
+}
+
+// Phase B — Auth UI
+async function firebaseLogin() {
+  if(!window._fbAuth || !window._fbGoogleProvider) {
+    showToast('Firebase não configurado. Adicione as credenciais do projeto.');
+    return;
+  }
+  try {
+    setSyncStatus('syncing');
+    const result = await window._fbAuth.signInWithPopup
+      ? window._fbAuth.signInWithPopup(window._fbGoogleProvider)
+      : (await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js'))
+          .signInWithPopup(window._fbAuth, window._fbGoogleProvider);
+    // onAuthStateChanged will update state.user
+  } catch(e) {
+    console.error('Login error:', e);
+    setSyncStatus('error', 'Login cancelado');
+    showToast('Login cancelado');
+  }
+}
+
+async function firebaseLogout() {
+  if(!window._fbAuth) return;
+  if(!confirm('Sair da conta? Seus dados locais são mantidos.')) return;
+  try {
+    const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    await signOut(window._fbAuth);
+    state.user = null;
+    renderAuthCard();
+    setSyncStatus('idle');
+    showToast('Saiu da conta');
+  } catch(e) {
+    console.error('Logout error:', e);
+  }
+}
+
+function renderAuthCard() {
+  const loggedOut = document.getElementById('auth-logged-out');
+  const loggedIn  = document.getElementById('auth-logged-in');
+  if(!loggedOut || !loggedIn) return;
+  if(state.user) {
+    loggedOut.style.display = 'none';
+    loggedIn.style.display  = 'block';
+    const nameEl   = document.getElementById('auth-name');
+    const emailEl  = document.getElementById('auth-email');
+    const avatarEl = document.getElementById('auth-avatar');
+    if(nameEl)   nameEl.textContent   = state.user.displayName || 'Usuário';
+    if(emailEl)  emailEl.textContent  = state.user.email || '';
+    if(avatarEl && state.user.photoURL) {
+      avatarEl.src = state.user.photoURL;
+      avatarEl.style.display = 'block';
+    }
+    // Auto-sync on login
+    downloadFromCloud().then(() => checkMigration());
+  } else {
+    loggedOut.style.display = 'block';
+    loggedIn.style.display  = 'none';
+    setSyncStatus('idle');
+  }
+}
+
+function renderSyncIndicator() {
+  if(!state.user) { setSyncStatus('idle'); return; }
+  // Check online status
+  if(!navigator.onLine) setSyncStatus('offline');
+}
+
+// Phase C — Upload / Download
+function buildCloudPayload() {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    config: state.config,
+    workouts: state.workouts,
+    athleteProfile: state.athleteProfile,
+    // chatHistory intentionally excluded — device-local
+  };
+}
+
+async function uploadToCloud() {
+  if(!state.user || !window._fbDb || !window._fbDoc || !window._fbSetDoc) return;
+  setSyncStatus('syncing');
+  try {
+    const ref = window._fbDoc(window._fbDb, 'users', state.user.uid);
+    await window._fbSetDoc(ref, buildCloudPayload(), { merge: true });
+    setSyncStatus('synced');
+    const now = new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+    const statusText = document.getElementById('sync-status-text');
+    if(statusText) statusText.textContent = `Sincronizado às ${now}`;
+  } catch(e) {
+    console.error('Upload error:', e);
+    setSyncStatus(navigator.onLine ? 'error' : 'offline');
+  }
+}
+
+async function downloadFromCloud() {
+  if(!state.user || !window._fbDb || !window._fbDoc || !window._fbGetDoc) return;
+  setSyncStatus('syncing');
+  try {
+    const ref  = window._fbDoc(window._fbDb, 'users', state.user.uid);
+    const snap = await window._fbGetDoc(ref);
+    if(snap.exists()) {
+      const data = snap.data();
+      if(data.config)         state.config         = { ...state.config,         ...data.config         };
+      if(data.workouts)       state.workouts       = data.workouts;
+      if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
+      save(); // persist cloud data to localStorage
+      renderDashboard(); renderLog(); renderPlanner();
+    }
+    setSyncStatus('synced');
+  } catch(e) {
+    console.error('Download error:', e);
+    setSyncStatus(navigator.onLine ? 'error' : 'offline');
+  }
+}
+
+async function syncNow() {
+  if(!state.user) { showToast('Faça login primeiro'); return; }
+  await uploadToCloud();
+  showToast(_syncStatus === 'synced' ? '☁️ Sincronizado!' : '⚠️ Erro de sincronização');
+}
+
+// Phase D — Migration detection
+let _migrationOffered = false;
+function checkMigration() {
+  if(_migrationOffered) return;
+  const hasLocalData = state.workouts.length > 0 || state.config.raceDate;
+  if(!hasLocalData) { uploadToCloud(); return; }
+  _migrationOffered = true;
+  // Show migration prompt via confirm (simple, no new modal needed)
+  const choice = confirm(
+    'Encontramos dados locais neste dispositivo.\n\n' +
+    'Deseja sincronizar com sua conta Google?\n\n' +
+    'Isso preservará todos os seus treinos, planner e perfil de atleta.'
+  );
+  if(choice) {
+    uploadToCloud().then(() => showToast('✓ Dados sincronizados com sucesso!'));
+  } else {
+    setSyncStatus('idle');
+    showToast('Continuando com dados locais');
+  }
+}
+
+// Patch save() to also push to cloud when logged in
+const _originalSave = save;
+function save() {
+  localStorage.setItem(DB_KEY, JSON.stringify(state));
+  // Background cloud sync — non-blocking, only if logged in and online
+  if(state.user && navigator.onLine) {
+    uploadToCloud().catch(() => {});
+  }
+}
+
+// Phase E — Online/offline events
+window.addEventListener('online',  () => { if(state.user) uploadToCloud(); else setSyncStatus('idle'); });
+window.addEventListener('offline', () => setSyncStatus('offline'));
+
+// Sync on visibility change (returning to app from another tab)
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && state.user && navigator.onLine) {
+    downloadFromCloud().catch(() => {});
+  }
+});
 
 // ==================== PWA ====================
 const MANIFEST = {
