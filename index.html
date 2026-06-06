@@ -1110,7 +1110,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 
 <script>
 // ==================== STATE ====================
-const DB_KEY = 'pacemaker_v2';
+const DB_KEY_LEGACY = 'pacemaker_v2';
+function getDbKey() {
+  return state.user?.uid ? `pacemaker_${state.user.uid}` : DB_KEY_LEGACY;
+}
+function getStravaKey()  { return state.user?.uid ? `pacemaker_strava_${state.user.uid}`        : 'pacemaker_strava';        }
+function getStravaCidKey(){ return state.user?.uid ? `pacemaker_strava_cid_${state.user.uid}`    : 'pacemaker_strava_cid';    }
+function getStravaSecKey(){ return state.user?.uid ? `pacemaker_strava_secret_${state.user.uid}` : 'pacemaker_strava_secret'; }
 let state = {
   config: { raceDate:'', raceName:'Maratona', monthGoal:190, weekGoal:52, scaleStart:'', name:'Caio', weight:110, height:175 },
   workouts: [],
@@ -1124,7 +1130,13 @@ let state = {
     notes: '',
     updatedAt: ''
   },
-  user: null  // { uid, displayName, email, photoURL } — set by Firebase auth listener
+  user: null,  // { uid, displayName, email, photoURL } — set by Firebase auth listener
+  stravaConfig: {
+    clientId:  '',    // safe to sync — public value
+    connected: false, // whether Strava is linked
+    athlete:   {}     // { id, firstname, lastname, profile } — safe metadata
+    // access_token, refresh_token, client_secret → device-local only (never synced)
+  }
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
 let plannerOffset = 0;
@@ -1148,8 +1160,10 @@ function setModalMode(mode) {
 }
 
 function load() {
-  const d = localStorage.getItem(DB_KEY);
-  if (d) { try { state = {...state, ...JSON.parse(d)}; } catch(e){} }
+  // Try UID-scoped key first, fall back to legacy for unauthenticated / first load
+  const uidKey = state.user?.uid ? `pacemaker_${state.user.uid}` : null;
+  const raw = (uidKey && localStorage.getItem(uidKey)) || localStorage.getItem(DB_KEY_LEGACY);
+  if(raw) { try { state = {...state, ...JSON.parse(raw)}; } catch(e){} }
 }
 
 // ==================== NAV ====================
@@ -3133,7 +3147,7 @@ function loadConfig() {
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
   loadOpenAIKeyField();
-  const cid = localStorage.getItem('pacemaker_strava_cid');
+  const cid = localStorage.getItem(getStravaCidKey());
   if(cid) document.getElementById('cfg-strava-id').value = cid;
   updateStravaBadge();
   // Athlete profile fields
@@ -3191,10 +3205,10 @@ const STRAVA_KEY = 'pacemaker_strava';
 const STRAVA_SCOPE = 'activity:read_all';
 
 function getStravaTokens() {
-  try { return JSON.parse(localStorage.getItem(STRAVA_KEY)||'null'); } catch(e){return null;}
+  try { return JSON.parse(localStorage.getItem(getStravaKey())||'null'); } catch(e){return null;}
 }
-function setStravaTokens(t) { localStorage.setItem(STRAVA_KEY, JSON.stringify(t)); }
-function clearStravaTokens() { localStorage.removeItem(STRAVA_KEY); }
+function setStravaTokens(t) { localStorage.setItem(getStravaKey(), JSON.stringify(t)); }
+function clearStravaTokens() { localStorage.removeItem(getStravaKey()); }
 function isStravaConnected() { const t=getStravaTokens(); return !!(t&&t.access_token); }
 
 function updateStravaBadge() {
@@ -3229,7 +3243,7 @@ function stravaConnect() {
     return;
   }
   // Save client ID for later use in token exchange
-  localStorage.setItem('pacemaker_strava_cid', clientId);
+  localStorage.setItem(getStravaCidKey(), clientId);
   // The redirect URI must be this same page
   const redirectUri = encodeURIComponent(window.location.href.split('?')[0].split('#')[0]);
   const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${STRAVA_SCOPE}`;
@@ -3240,6 +3254,8 @@ function stravaConnect() {
 function stravaDisconnect() {
   if(!confirm('Desconectar do Strava? Os treinos já importados são mantidos.')) return;
   clearStravaTokens();
+  state.stravaConfig = { clientId: '', connected: false, athlete: {} };
+  save(); // propagates disconnect to Firestore
   updateStravaBadge();
   showToast('Strava desconectado');
 }
@@ -3270,7 +3286,7 @@ async function handleStravaCallback() {
   // Clean URL immediately
   window.history.replaceState({}, document.title, window.location.pathname);
 
-  const clientId = localStorage.getItem('pacemaker_strava_cid');
+  const clientId = localStorage.getItem(getStravaCidKey());
   if(!clientId) { showToast('Client ID não encontrado. Configure novamente.'); return; }
 
   showToast('Trocando código por token...');
@@ -3279,14 +3295,14 @@ async function handleStravaCallback() {
   // to protect it. For a local/PWA HTML app we show the user what to do.
   // We'll use a PKCE-free approach: show the user instructions if no secret saved,
   // or attempt exchange if they've provided the secret.
-  const clientSecret = localStorage.getItem('pacemaker_strava_secret');
+  const clientSecret = localStorage.getItem(getStravaSecKey());
   if(!clientSecret) {
     // Prompt user to enter secret once (only needed for initial exchange)
     const secret = prompt(
       'Último passo!\n\nCole seu Strava Client Secret abaixo.\nEncontre em strava.com/settings/api\n(Será salvo só no seu dispositivo)'
     );
     if(!secret) { showToast('Cancelado. Tente novamente.'); return; }
-    localStorage.setItem('pacemaker_strava_secret', secret);
+    localStorage.setItem(getStravaSecKey(), secret);
     await exchangeStravaCode(clientId, secret, code);
   } else {
     await exchangeStravaCode(clientId, clientSecret, code);
@@ -3315,14 +3331,25 @@ async function exchangeStravaCode(clientId, clientSecret, code) {
         athlete: data.athlete,
         lastSync: null
       });
+      // Sync safe Strava metadata to state so it travels to other devices via Firestore
+      state.stravaConfig = {
+        clientId:  clientId,
+        connected: true,
+        athlete: {
+          id:        data.athlete?.id || '',
+          firstname: data.athlete?.firstname || '',
+          lastname:  data.athlete?.lastname || '',
+          profile:   data.athlete?.profile_medium || ''
+        }
+      };
+      save(); // triggers uploadToCloud — stravaConfig now in Firestore
       updateStravaBadge();
       showToast(`✓ Strava conectado! Olá, ${data.athlete?.firstname||'atleta'}!`);
-      // Auto-open settings to show connected state
       goTo('sec-settings');
     } else {
       console.error('Strava token error:', data);
       showToast('Erro: ' + (data.message||'Verifique Client ID e Secret'));
-      localStorage.removeItem('pacemaker_strava_secret');
+      localStorage.removeItem(getStravaSecKey());
     }
   } catch(e) {
     showToast('Erro de conexão com Strava');
@@ -3334,8 +3361,8 @@ async function refreshStravaToken() {
   const t = getStravaTokens();
   if(!t) return null;
   if(Date.now()/1000 < t.expires_at - 300) return t.access_token; // Still valid
-  const clientId = localStorage.getItem('pacemaker_strava_cid');
-  const clientSecret = localStorage.getItem('pacemaker_strava_secret');
+  const clientId = localStorage.getItem(getStravaCidKey());
+  const clientSecret = localStorage.getItem(getStravaSecKey());
   try {
     const res = await fetch('https://www.strava.com/oauth/token', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -3778,7 +3805,8 @@ function buildCloudPayload() {
     config: state.config,
     workouts: state.workouts,
     athleteProfile: state.athleteProfile,
-    // chatHistory intentionally excluded — device-local
+    stravaConfig: state.stravaConfig,  // clientId + connected flag + athlete meta (no tokens)
+    // chatHistory excluded — device-local
   };
 }
 
@@ -3809,8 +3837,17 @@ async function downloadFromCloud() {
       if(data.config)         state.config         = { ...state.config,         ...data.config         };
       if(data.workouts)       state.workouts       = data.workouts;
       if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
-      save(); // persist cloud data to localStorage
+      // Change 3: restore Strava config so Client ID appears on new devices
+      if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
+      // Also restore Client ID to UID-scoped localStorage so Strava functions find it
+      if(data.stravaConfig?.clientId) {
+        localStorage.setItem(getStravaCidKey(), data.stravaConfig.clientId);
+      }
+      save(); // persist cloud data to UID-scoped localStorage
       renderDashboard(); renderLog(); renderPlanner();
+      // Repopulate Settings fields (Strava CID, athlete profile, config)
+      if(typeof loadConfig === 'function') loadConfig();
+      if(typeof updateStravaBadge === 'function') updateStravaBadge();
     }
     setSyncStatus('synced');
   } catch(e) {
@@ -3825,22 +3862,48 @@ async function syncNow() {
   showToast(_syncStatus === 'synced' ? '☁️ Sincronizado!' : '⚠️ Erro de sincronização');
 }
 
-// Phase D — Migration detection
+// Phase D — Migration detection (legacy pacemaker_v2 → pacemaker_<uid>)
 let _migrationOffered = false;
 function checkMigration() {
-  if(_migrationOffered) return;
-  const hasLocalData = state.workouts.length > 0 || state.config.raceDate;
-  if(!hasLocalData) { uploadToCloud(); return; }
+  if(_migrationOffered || !state.user) return;
   _migrationOffered = true;
-  // Show migration prompt via confirm (simple, no new modal needed)
+
+  const uid = state.user.uid;
+  const uidKey = `pacemaker_${uid}`;
+  const legacyRaw = localStorage.getItem(DB_KEY_LEGACY);
+  const uidRaw    = localStorage.getItem(uidKey);
+
+  // If UID-scoped key already exists — returning user, no migration needed
+  if(uidRaw) { return; }
+
+  // No legacy data either — new user, just upload empty/default state
+  if(!legacyRaw) { uploadToCloud(); return; }
+
+  // Legacy data exists and no UID key yet — offer migration
+  let legacyState;
+  try { legacyState = JSON.parse(legacyRaw); } catch(e) { return; }
+  const hasData = (legacyState.workouts?.length > 0) || legacyState.config?.raceDate;
+  if(!hasData) { uploadToCloud(); return; }
+
   const choice = confirm(
     'Encontramos dados locais neste dispositivo.\n\n' +
-    'Deseja sincronizar com sua conta Google?\n\n' +
-    'Isso preservará todos os seus treinos, planner e perfil de atleta.'
+    'Deseja migrar para sua conta Google?\n\n' +
+    'Isso preservará todos os seus treinos, planner e perfil de atleta.\n' +
+    'Os dados serão associados à sua conta e sincronizados entre dispositivos.'
   );
   if(choice) {
-    uploadToCloud().then(() => showToast('✓ Dados sincronizados com sucesso!'));
+    // Merge legacy into current state, save under UID key, then upload
+    state = { ...state, ...legacyState, user: state.user };
+    localStorage.setItem(uidKey, JSON.stringify(state));
+    // Clean up legacy key after successful migration
+    uploadToCloud().then(() => {
+      localStorage.removeItem(DB_KEY_LEGACY);
+      showToast('✓ Dados migrados e sincronizados!');
+      renderDashboard(); renderLog(); renderPlanner();
+    }).catch(() => showToast('⚠️ Migração salva localmente — tente sincronizar novamente'));
   } else {
+    // User chose to stay local — write legacy data to UID key so it's not lost
+    localStorage.setItem(uidKey, legacyRaw);
     setSyncStatus('idle');
     showToast('Continuando com dados locais');
   }
@@ -3849,7 +3912,7 @@ function checkMigration() {
 // Patch save() to also push to cloud when logged in
 const _originalSave = save;
 function save() {
-  localStorage.setItem(DB_KEY, JSON.stringify(state));
+  localStorage.setItem(getDbKey(), JSON.stringify(state));
   // Background cloud sync — non-blocking, only if logged in and online
   if(state.user && navigator.onLine) {
     uploadToCloud().catch(() => {});
