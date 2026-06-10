@@ -2145,7 +2145,6 @@ async function saveGeminiKey() {
     statusEl.textContent = '✗ Sem conexão. Verifique sua internet.';
     statusEl.style.color = 'var(--red)';
   }
-}
 
 function clearGeminiKey() {
   localStorage.removeItem(GEMINI_KEY);
@@ -3921,7 +3920,6 @@ function exportMonthToCalendar() {
 }
 
 // ==================== FIREBASE CLOUD SYNC ====================
-const SCHEMA_VERSION = 1;
 let _syncStatus = 'idle'; // 'idle' | 'syncing' | 'synced' | 'offline' | 'error'
 
 function setSyncStatus(status, msg) {
