@@ -2228,7 +2228,7 @@ async function sendToGemini(userText) {
       { role: 'user', parts: [{ text: userText }] }
     ],
     generationConfig: {
-      maxOutputTokens: 600,
+      maxOutputTokens: 1200,
       temperature: 0.7,
       topP: 0.9
     },
@@ -2248,7 +2248,11 @@ async function sendToGemini(userText) {
     removeTypingIndicator();
     if(res.ok) {
       const data = await res.json();
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Não recebi resposta do Gemini.';
+      const reply =
+        data.candidates?.[0]?.content?.parts
+          ?.map(p => p.text || '')
+          .join('') ||
+            'Não recebi resposta do Gemini.';
       state.chatHistory.push({role:'coach', text: reply});
     } else {
       const err = await res.json();
