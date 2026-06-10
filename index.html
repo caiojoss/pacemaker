@@ -745,6 +745,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
       </div>
       <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-size:16px">✨</span>
+          <div class="label" style="margin-bottom:0">Coach AI · Gemini</div>
+          <div id="gemini-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">inativo</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">Cole sua Gemini API key para ativar o Coach com IA real. Salva só no dispositivo, nunca enviada ao servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a></div>
+        <div class="form-group">
+          <label class="form-label">Gemini API Key</label>
+          <div style="position:relative">
+            <input type="password" class="form-input" id="cfg-gemini-key" placeholder="AIzaSy..." style="padding-right:44px"/>
+            <button onclick="toggleGeminiKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px" id="gemini-key-eye">👁</button>
+          </div>
+        </div>
+        <div id="gemini-key-status" style="font-family:var(--mono);font-size:10px;margin-bottom:10px;display:none"></div>
+        <button class="btn btn-primary btn-full" onclick="saveGeminiKey()">Salvar e ativar Gemini</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="clearGeminiKey()">Remover API key</button>
+      </div>
+      <div class="card" style="margin-bottom:16px">
         <div class="label" style="margin-bottom:4px">Coach AI · OpenAI GPT-4o</div>
         <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">Cole sua API key da OpenAI para ativar o Coach real. A key fica salva só no seu dispositivo, nunca sai dele.<br/><a href="https://platform.openai.com/api-keys" style="color:var(--blue)">platform.openai.com/api-keys ↗</a></div>
         <div class="form-group">
@@ -2065,6 +2083,195 @@ function clearOpenAIKey() {
   updateKeyStatus();
 }
 
+// ==================== GEMINI KEY ====================
+const GEMINI_KEY = 'pacemaker_gemini_key';
+function getGeminiKey() { return localStorage.getItem(GEMINI_KEY)||''; }
+function hasGeminiKey() { return !!getGeminiKey(); }
+
+function toggleGeminiKeyVisibility() {
+  const inp = document.getElementById('cfg-gemini-key');
+  if(inp) inp.type = inp.type==='password' ? 'text' : 'password';
+}
+
+function loadGeminiKeyField() {
+  const k = getGeminiKey();
+  const el = document.getElementById('cfg-gemini-key');
+  if(el && k) el.value = k;
+  updateGeminiBadge();
+}
+
+function updateGeminiBadge() {
+  const badge = document.getElementById('gemini-badge');
+  const coachBadge = document.getElementById('coach-ai-badge');
+  if(hasGeminiKey()) {
+    if(badge) { badge.textContent='✓ ativo'; badge.style.color='var(--teal)'; badge.style.borderColor='rgba(46,232,196,0.3)'; badge.style.background='var(--teal-dim)'; }
+    if(coachBadge) { coachBadge.textContent='✨ Gemini'; coachBadge.style.color='var(--teal)'; coachBadge.style.background='var(--teal-dim)'; coachBadge.style.borderColor='rgba(46,232,196,0.3)'; }
+  } else {
+    if(badge) { badge.textContent='inativo'; badge.style.color='var(--text3)'; badge.style.borderColor='var(--border2)'; badge.style.background='transparent'; }
+    if(coachBadge) { coachBadge.textContent='offline'; coachBadge.style.color='var(--accent)'; coachBadge.style.background='var(--accent-dim)'; coachBadge.style.borderColor='rgba(232,245,90,0.3)'; }
+  }
+}
+
+async function saveGeminiKey() {
+  const key = document.getElementById('cfg-gemini-key').value.trim();
+  const statusEl = document.getElementById('gemini-key-status');
+  statusEl.style.display = 'block';
+  if(!key.startsWith('AIza')) {
+    statusEl.textContent = '✗ Key inválida. Deve começar com AIza';
+    statusEl.style.color = 'var(--red)';
+    return;
+  }
+  statusEl.textContent = '⟳ Testando conexão com Gemini...';
+  statusEl.style.color = 'var(--text3)';
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+      { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({contents:[{parts:[{text:'ping'}]}], generationConfig:{maxOutputTokens:5}}) }
+    );
+    if(res.ok) {
+      localStorage.setItem(GEMINI_KEY, key);
+      statusEl.textContent = '✓ Gemini ativo! Coach com IA real habilitado.';
+      statusEl.style.color = 'var(--teal)';
+      updateGeminiBadge();
+      showToast('✨ Gemini Coach ativado!');
+    } else {
+      const err = await res.json();
+      statusEl.textContent = '✗ ' + (err.error?.message||'Verifique a key');
+      statusEl.style.color = 'var(--red)';
+    }
+  } catch(e) {
+    statusEl.textContent = '✗ Sem conexão. Verifique sua internet.';
+    statusEl.style.color = 'var(--red)';
+  }
+}
+
+function clearGeminiKey() {
+  localStorage.removeItem(GEMINI_KEY);
+  const el = document.getElementById('cfg-gemini-key');
+  if(el) el.value = '';
+  const statusEl = document.getElementById('gemini-key-status');
+  if(statusEl) { statusEl.style.display='block'; statusEl.textContent='Gemini removido. Coach voltou ao modo offline.'; statusEl.style.color='var(--text3)'; }
+  updateGeminiBadge();
+}
+
+// ==================== GEMINI SYSTEM PROMPT ====================
+function buildSystemPrompt() {
+  const c = buildCoachContext();
+  const p = state.athleteProfile||{};
+  const cfg = state.config||{};
+  const goalLabel = {sub4:'maratona sub 4 horas',sub3h30:'maratona sub 3h30',pr:'bater o PR',first_marathon:'completar a primeira maratona',finish:'só terminar bem','':'não definido'}[p.goal||'']||p.goal||'não definido';
+
+  const recentWorkouts = state.workouts
+    .filter(w=>!w.planned&&w.date)
+    .sort((a,b)=>b.date.localeCompare(a.date))
+    .slice(0,10)
+    .map(w=>`${w.date} | ${w.type}${w.dist?' | '+w.dist+'km':''}${w.pace?' | '+w.pace+'/km':''}${w.hr?' | '+w.hr+'bpm':''}${w.rpe?' | RPE '+w.rpe+'/10':''}${w.fatigue?' | fadiga '+w.fatigue+'/5':''}`)
+    .join('\n');
+
+  const longoes = c.longoes.slice(0,5).map(l=>`${l.date}: ${l.dist}km a ${l.pace}/km`).join('\n');
+
+  return `Você é o Coach AI do Pacemaker, treinador pessoal de corrida e musculação de ${c.athleteName}.
+
+PERFIL DO ATLETA:
+- Objetivo: ${goalLabel}
+- Tempo alvo: ${p.targetTime||'não definido'}
+- Prova: ${cfg.raceName||'Maratona'} em ${cfg.raceDate||'data não configurada'} (${c.days} dias)
+- Peso: ${cfg.weight||'?'}kg | Altura: ${cfg.height||'?'}cm
+- Histórico de lesões: ${p.injuryHistory||'nenhum reportado'}
+- Preferência musculação: ${p.strengthPref||'ABC'}
+- Longão preferido: até ${p.longRunPref||32}km
+- Observações: ${p.notes||'nenhuma'}
+- Escala de trabalho: 2x2 (2 dias trabalho / 2 dias folga)
+
+ESTADO ATUAL (${today()}):
+- Semana: ${c.wkm}km executados | Meta: ${cfg.weekGoal||52}km | Aderência: ${c.adherence!==null?c.adherence+'%':'sem dados'}
+- Semana passada: ${c.lastWeekKm}km | Tendência de volume: ${c.volumeTrend?.join('km → ')+'km'||'sem dados'}
+- Prontidão: ${c.rs}/100 | Fadiga média: ${c.fatigueTrend||'--'}/5 | RPE médio: ${c.rpeTrend||'--'}/10
+- Previsão maratona: ${c.pred?secToTime(c.pred):'sem dados'} (meta: ${p.targetTime||'3:58'})
+- Musculação esta semana: ${c.strengthSessions} sessão(ões)
+
+ÚLTIMOS 5 LONGÕES:
+${longoes||'Nenhum longão registrado'}
+
+ÚLTIMOS 10 TREINOS:
+${recentWorkouts||'Nenhum treino registrado'}
+
+REGRAS DE COMPORTAMENTO:
+- Responda SEMPRE em português brasileiro
+- Seja direto, específico e baseado nos dados — nunca genérico
+- Pode e deve DISCORDAR do atleta quando os dados indicarem risco
+- Se fadiga >= 4.0 ou prontidão <= 50: recomende recuperação mesmo se o atleta pedir treino pesado
+- Se aderência < 60%: questione pedidos de aumento de volume
+- Se dias para a prova <= 14: enforça taper independente do que o atleta perguntar
+- Justifique cada recomendação com dados reais do histórico
+- Dê números exatos: distância, pace, FC, séries, recuperação
+- Máximo 4 parágrafos por resposta
+- Considere sempre a escala 2x2 ao sugerir treinos`;
+}
+
+// ==================== SEND TO GEMINI ====================
+async function sendToGemini(userText) {
+  const key = getGeminiKey();
+  const systemPrompt = buildSystemPrompt();
+
+  // Build conversation history for Gemini (last 10 messages, excluding current)
+  const history = state.chatHistory.slice(-11, -1).map(m => ({
+    role: m.role === 'coach' ? 'model' : 'user',
+    parts: [{ text: m.text }]
+  }));
+
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [
+      ...history,
+      { role: 'user', parts: [{ text: userText }] }
+    ],
+    generationConfig: {
+      maxOutputTokens: 600,
+      temperature: 0.7,
+      topP: 0.9
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+    ]
+  };
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
+      { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }
+    );
+    removeTypingIndicator();
+    if(res.ok) {
+      const data = await res.json();
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Não recebi resposta do Gemini.';
+      state.chatHistory.push({role:'coach', text: reply});
+    } else {
+      const err = await res.json();
+      const msg = err.error?.message||'Erro desconhecido';
+      if(msg.includes('quota')||msg.includes('RESOURCE_EXHAUSTED')) {
+        state.chatHistory.push({role:'coach', text:'⚠️ Limite de quota do Gemini atingido. Voltando ao modo offline temporariamente.'});
+      } else if(msg.includes('API_KEY_INVALID')) {
+        state.chatHistory.push({role:'coach', text:'⚠️ Gemini API key inválida. Verifique em Configurações.'});
+        localStorage.removeItem(GEMINI_KEY); updateGeminiBadge();
+      } else {
+        state.chatHistory.push({role:'coach', text:`⚠️ Gemini: ${msg}. Tente novamente.`});
+      }
+    }
+  } catch(e) {
+    removeTypingIndicator();
+    // Network error — fall back to mock silently
+    const fallback = getMockReply(userText.toLowerCase());
+    state.chatHistory.push({role:'coach', text:`📴 Sem conexão — resposta offline:\n\n${fallback}`});
+  }
+  if(state.chatHistory.length>60) state.chatHistory=state.chatHistory.slice(-60);
+  save(); renderChatMsgs();
+}
+
 // ==================== COACH AI (MOCK INTELIGENTE) ====================
 function buildCoachContext() {
   const days = state.config.raceDate ? daysBetween(today(), state.config.raceDate) : '--';
@@ -3068,7 +3275,11 @@ async function sendCoach() {
   state.chatHistory.push({role:'user', text});
   renderChatMsgs();
   addTypingIndicator();
-  await sendMock(text);
+  if(hasGeminiKey() && navigator.onLine) {
+    await sendToGemini(text);
+  } else {
+    await sendMock(text);
+  }
   input.disabled = false; sendBtn.disabled = false; input.focus();
 }
 
@@ -3147,6 +3358,7 @@ function loadConfig() {
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
   loadOpenAIKeyField();
+  loadGeminiKeyField();
   const cid = localStorage.getItem(getStravaCidKey());
   if(cid) document.getElementById('cfg-strava-id').value = cid;
   updateStravaBadge();
