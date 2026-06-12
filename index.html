@@ -142,6 +142,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .btn-primary:active{opacity:0.8;transform:scale(0.97)}
 .btn-ghost{background:transparent;color:var(--text2);border:0.5px solid var(--border2)}
 .btn-ghost:active{background:var(--surface2)}
+.btn.sel{background:var(--accent-dim);color:var(--accent);border-color:rgba(232,245,90,0.4)}
 .btn-full{width:100%;margin-top:10px}
 .btn-danger{background:var(--red-dim);color:var(--red);border:0.5px solid rgba(255,92,92,0.3)}
 /* FORM ELEMENTS */
@@ -617,6 +618,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
       <div class="collapsible-body" id="plan-collapsible-body">
         <div class="collapsible-body-inner">
+          <!-- Week Selector (Bug 3) -->
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            <button id="btn-plan-this-week" class="btn btn-ghost sel" style="flex:1;font-size:10px;padding:8px" onclick="setPlanWeek('current')">Semana Atual</button>
+            <button id="btn-plan-next-week" class="btn btn-ghost" style="flex:1;font-size:10px;padding:8px" onclick="setPlanWeek('next')">Próxima Semana</button>
+          </div>
           <div id="plan-week-target-label" style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-bottom:10px"></div>
           <div class="form-group" style="margin-bottom:10px">
             <label class="form-label">Meta de km <span id="plan-km-suggestion" style="color:var(--teal);font-size:9px;margin-left:4px"></span></label>
@@ -1438,13 +1444,13 @@ function nextSuggestedWorkout() {
 function renderWeeklyReport() {
   const c = buildCoachContext();
   const h = c.history8w;
-  const lastWeek = c.lastWeek;
-  const prevWeek = h[6]; // Week before last
+  const lastWeek = c.lastWeek || { km: 0, adherence: 0, longDist: 0, pace: 0 };
+  const prevWeek = h[6] || { km: 0 }; // Week before last
 
   const el = document.getElementById('db-weekly-report');
   if (!el) return;
 
-  if (lastWeek.km === 0) {
+  if (lastWeek.km === 0 && lastWeek.adherence === 0) {
     el.innerHTML = `
       <div class="card card-accent" style="margin-bottom:16px">
         <div class="label">Relatório Semanal</div>
@@ -2418,10 +2424,11 @@ function generateCoachInsights(c) {
 
 function renderCoachContext() {
   const c = buildCoachContext();
+  const lastWeek = c.lastWeek || { km: 0, adherence: 0 };
 
   // Status bar
   document.getElementById('coach-context-box').textContent =
-    `${c.athleteName} · ${c.days} dias · ${c.wkm}km executados · Semana passada: ${c.lastWeekKm}km · Prontidão: ${c.rs}/100${c.adherence!==null?' · Aderência: '+c.adherence+'%':''}`;
+    `${c.athleteName} · ${c.days} dias · ${c.wkm}km executados · Semana passada: ${lastWeek.km}km · Prontidão: ${c.rs}/100 · Aderência: ${lastWeek.adherence}%`;
 
   // Insights block
   const insights = generateCoachInsights(c);
@@ -2449,8 +2456,7 @@ function renderCoachContext() {
   if(sugEl) sugEl.textContent = `· Sugestão: ${suggested}km`;
 
   // Target week label
-  const todayDow = new Date(today()+'T12:00:00').getDay();
-  const planNextWeek = todayDow===0 || (todayDow===0?6:todayDow-1)>=5;
+  const planNextWeek = targetPlanWeek === 'next';
   const labelEl = document.getElementById('plan-week-target-label');
   if(labelEl) {
     if(planNextWeek) {
@@ -2462,6 +2468,10 @@ function renderCoachContext() {
       const we = new Date(ws); we.setDate(we.getDate()+6);
       labelEl.textContent = `Planejando: ${ws.getDate()}/${ws.getMonth()+1} – ${we.getDate()}/${we.getMonth()+1} (semana atual)`;
     }
+    // Sync suggestWeekKm to respect selected week
+    const suggested = suggestWeekKm();
+    const sugEl = document.getElementById('plan-km-suggestion');
+    if(sugEl) sugEl.textContent = `· Sugestão: ${suggested}km`;
   }
 
   if(state.chatHistory.length===0) {
@@ -2574,45 +2584,83 @@ function getNextStrengthSession() {
 // ==================== SMART KM SUGGESTION ====================
 function suggestWeekKm() {
   const c = buildCoachContext();
-  const lastKm = parseFloat(c.lastWeekKm)||0;
-  const configured = state.config.weekGoal||52;
+  const planNextWeek = targetPlanWeek === 'next';
+  // If planning current week, suggest based on last week. 
+  // If planning next week, suggest based on current week (if it has volume) or last week.
+  const baseKm = planNextWeek 
+    ? (parseFloat(c.wkm) > 0 ? parseFloat(c.wkm) : (c.lastWeek?.km || 0))
+    : (c.lastWeek?.km || 0);
+    
+  const configured = state.config.weekGoal || 52;
   const rs = c.rs;
-  let suggested = lastKm > 0 ? Math.round(lastKm*(rs>=70?1.08:rs>=50?1.0:0.85)) : configured;
+  let suggested = baseKm > 0 ? Math.round(baseKm * (rs >= 70 ? 1.08 : rs >= 50 ? 1.0 : 0.85)) : configured;
   return Math.max(30, Math.min(85, suggested));
 }
 
 // Get full strength steps for a combo workout
 // ==================== LOAD BALANCE ====================
 function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier) {
+  // Hit kmGoal exactly by adjusting Z2 days
   const currentKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
   const gap = kmGoal - currentKm;
-  if(Math.abs(gap) < 1) return; // within 1km — good enough
+  if (Math.abs(gap) < 0.1) return;
 
-  // Find adjustable z2 workouts (not long, not interval, not strength, not done, not past)
   const adjustable = plan.filter(p=>
     p.workout && ['z2','recovery'].includes(p.workout.type) && !p.done && !p.isPast
   );
-  if(adjustable.length===0) return;
+  
+  if(adjustable.length === 0) return;
 
-  // Distribute gap evenly across adjustable days, enforce 5-14km bounds
-  const totalAdj = gap;
-  const perDay = totalAdj / adjustable.length;
-  let remaining = totalAdj;
-
-  adjustable.forEach((p, i)=>{
-    const isLast = i===adjustable.length-1;
-    const delta = isLast ? remaining : Math.round(perDay);
-    const newDist = Math.max(5, Math.min(14, Math.round((p.workout.dist||8)+delta)));
-    remaining -= (newDist-(p.workout.dist||8));
+  // Distribute gap across adjustable days
+  const perDay = gap / adjustable.length;
+  adjustable.forEach((p, idx) => {
+    const oldDist = p.workout.dist || 0;
+    // Round to 1 decimal place to avoid floating point mess
+    let newDist = parseFloat((oldDist + perDay).toFixed(1));
+    
+    // Safety floor: 5km
+    if (newDist < 5) newDist = 5;
+    
     p.workout.dist = newDist;
-    p.workout.title = `Z2 ${newDist}km`;
-    p.workout.desc = `${newDist}km Z2 · pace 6:20–6:40 · FC <140bpm`;
-    if(p.workout.steps) p.workout.steps = [{icon:'🏃',text:`${newDist}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}];
+    // Re-sync all strings
+    p.workout.title = p.workout.title.replace(/\d+(\.\d+)?km/g, `${newDist}km`);
+    if (!p.workout.title.includes('km')) p.workout.title += ` ${newDist}km`;
+    p.workout.desc = p.workout.desc.replace(/\d+(\.\d+)?km/g, `${newDist}km`);
+    if(p.workout.steps) {
+      p.workout.steps.forEach(s => {
+        s.text = s.text.replace(/\d+(\.\d+)?km/g, `${newDist}km`);
+      });
+    }
   });
+
+  // Final sanity check: if we are still off due to the 5km floor, adjust the last day
+  const finalKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
+  const finalGap = kmGoal - finalKm;
+  if (Math.abs(finalGap) > 0.1) {
+    const lastDay = adjustable[adjustable.length - 1];
+    lastDay.workout.dist = parseFloat((lastDay.workout.dist + finalGap).toFixed(1));
+    // Final sync
+    lastDay.workout.title = lastDay.workout.title.replace(/\d+(\.\d+)?km/g, `${lastDay.workout.dist}km`);
+  }
 }
 
 // ==================== PLAN WEEK - PREVIEW ====================
 let pendingPlan = null;
+let targetPlanWeek = 'current'; // 'current' or 'next'
+
+function setPlanWeek(week) {
+  targetPlanWeek = week;
+  const btnThis = document.getElementById('btn-plan-this-week');
+  const btnNext = document.getElementById('btn-plan-next-week');
+  if (week === 'current') {
+    btnThis.classList.add('sel');
+    btnNext.classList.remove('sel');
+  } else {
+    btnThis.classList.remove('sel');
+    btnNext.classList.add('sel');
+  }
+  renderCoachContext(); // Update labels
+}
 
 function previewWeekPlan() {
   const kmGoal = parseFloat(document.getElementById('plan-km-goal').value)||suggestWeekKm();
@@ -2624,16 +2672,24 @@ function previewWeekPlan() {
   const lastLong = c.longoes[0];
   if(lastLong && !planParams.long) planParams.long = Math.min(32, (parseFloat(lastLong.dist)||18)+2);
 
-  // Bug 2 fix: always use the SAME next-week bounds as renderNextWeekCard
-  // so generated workouts always land in the week shown in the card
-  const nwStart = new Date(weekStart(today())+'T12:00:00');
-  nwStart.setDate(nwStart.getDate()+7);
-  const nwEnd = new Date(nwStart); nwEnd.setDate(nwEnd.getDate()+6);
-  const targetWs = nwStart.toISOString().split('T')[0];
-  const planNextWeek = true; // always plan next week from Coach card
+  // Bug 3 fix: Use selected week bounds
+  let targetWs, targetWe;
+  const planNextWeek = targetPlanWeek === 'next';
+
+  if (planNextWeek) {
+    const nwStart = new Date(weekStart(today())+'T12:00:00');
+    nwStart.setDate(nwStart.getDate()+7);
+    const nwEnd = new Date(nwStart); nwEnd.setDate(nwEnd.getDate()+6);
+    targetWs = nwStart.toISOString().split('T')[0];
+    targetWe = nwEnd.toISOString().split('T')[0];
+  } else {
+    targetWs = weekStart(today());
+    const we = new Date(targetWs+'T12:00:00'); we.setDate(we.getDate()+6);
+    targetWe = we.toISOString().split('T')[0];
+  }
 
   const weekLabel = (() => {
-    const s=new Date(targetWs+'T12:00:00'), e=new Date(nwEnd);
+    const s=new Date(targetWs+'T12:00:00'), e=new Date(targetWe+'T12:00:00');
     return `${s.getDate()}/${s.getMonth()+1} – ${e.getDate()}/${e.getMonth()+1}`;
   })();
 
@@ -2655,8 +2711,6 @@ function previewWeekPlan() {
   const z2Count = plan.filter(p=>p.workout?.type==='z2').length;
   const strengthCount = plan.filter(p=>p.workout?.type==='strength').length;
   const totalKm = plan.filter(p=>p.workout&&!p.done&&!p.isPast).reduce((a,p)=>a+(p.workout.dist||0),0);
-  const doneKm = planNextWeek?0:parseFloat(c.wkm);
-  const pct = Math.round((doneKm+totalKm)/kmGoal*100);
 
   const stdSubtitle = `Semana ${weekLabel} · Meta: ${kmGoal}km`;
   const stdList = [
@@ -2666,11 +2720,16 @@ function previewWeekPlan() {
     strengthCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${strengthCount} musculação (rotação A→B→C)</div>`:'',
     `<div class="preview-item"><span class="preview-check">≈</span>80% Z2 / 20% qualidade (regra 80/20)</div>`,
   ].join('');
+  
+  const actualDoneKm = planNextWeek ? 0 : parseFloat(c.wkm);
+  const actualTotal = actualDoneKm + totalKm;
+  const actualPct = Math.round(actualTotal / kmGoal * 100);
+
   const stdSummary =
-    `Volume: <strong style="color:var(--accent)">${(doneKm+totalKm).toFixed(1)}km</strong> / ${kmGoal}km (${pct}%)<br/>`+
+    `Volume: <strong style="color:var(--accent)">${actualTotal.toFixed(1)}km</strong> / ${kmGoal}km (${actualPct}%)<br/>`+
     `Intensidade: <strong>${{conservative:'Conservador',standard:'Padrão',aggressive:'Agressivo'}[planParams.intensity]}</strong> · `+
     `Prioridade: <strong>${{volume:'Volume',rhythm:'Ritmo',recovery:'Recuperação'}[planParams.priority]}</strong><br/>`+
-    (useLastWeekRef?`Ref semana passada: ${c.lastWeekKm}km considerados na progressão.`:'');
+    (useLastWeekRef?`Ref semana passada: ${c.lastWeek.km}km considerados na progressão.`:'');
 
   // Save snapshot so restoreStandardPreview can fully restore
   pendingPlan._stdSnapshot = {subtitle: stdSubtitle, list: stdList, summary: stdSummary};
@@ -2761,9 +2820,9 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     freeOffDays.find(d=>[6,0].includes(new Date(d.date+'T12:00:00').getDay()))||freeOffDays[0]
   ) : null;
   if(longDay) {
-    const dist = Math.max(14, targetLong);
+    const dist = Math.min(targetLong, Math.round(kmGoal * 0.45));
     longDay.workout = {
-      type:'long', title:'Longão Z2', dist, pace:'6:20–6:45',
+      type:'long', title:`Longão ${dist}km`, dist, pace:'6:20–6:45',
       desc:`${dist}km em Z2 · pace 6:20–6:45 · FC <145bpm`,
       steps:[
         {icon:'🔥',text:'Aquecimento 2km leve',detail:'pace >7:00'},
@@ -2775,35 +2834,25 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     remaining -= dist;
   }
 
-  // 2. Quality sessions (up to qualityCount, only on off days)
+  // 2. Quality sessions
   const qualityDays = freeOffDays.filter(d=>d!==longDay).slice(0, qualityCount);
   qualityDays.forEach((d,qi)=>{
     if(feeling==='pain'||feeling==='tired') return;
+    const dist = Math.round(Math.min(14, Math.max(8, kmGoal * 0.2)));
     if(wantIntervals||qi===1) {
-      d.workout={type:'interval',title:'Tiros 1km',dist:10,pace:'5:00–5:15',
-        desc:'2km aq + 6x1km (5:00–5:15) + rec 90s + 2km volta',
-        steps:[{icon:'🔥',text:'Aquecimento 2km Z2',detail:''},{icon:'⚡',text:'6x1km forte',detail:'pace 5:00–5:15'},{icon:'🚶',text:'Rec 90s trotando',detail:''},{icon:'🏁',text:'Desaquecimento 2km',detail:''}]};
+      d.workout={type:'interval',title:`Tiros ${dist}km`,dist,pace:'5:00–5:15',
+        desc:`2km aq + ${dist-4}x1km (5:00–5:15) + rec 90s + 2km volta`,
+        steps:[{icon:'🔥',text:'Aquecimento 2km Z2',detail:''},{icon:'⚡',text:`${dist-4}x1km forte`,detail:'pace 5:00–5:15'},{icon:'🚶',text:'Rec 90s trotando',detail:''},{icon:'🏁',text:'Desaquecimento 2km',detail:''}]};
     } else {
-      d.workout={type:'progressivo',title:'Progressivo',dist:12,pace:'6:00–6:20',
-        desc:'12km: 4km Z2 → 4km Z3 → 4km pace alvo (5:41)',
-        steps:[{icon:'🔥',text:'4km Z2',detail:'pace 6:30–6:45'},{icon:'🏃',text:'4km Z3',detail:'pace 6:00–6:15'},{icon:'⚡',text:'4km pace alvo',detail:'5:41–5:50/km'}]};
+      const seg = Math.round(dist/3);
+      d.workout={type:'progressivo',title:`Progressivo ${dist}km`,dist,pace:'6:00–6:20',
+        desc:`${dist}km: ${seg}km Z2 → ${seg}km Z3 → ${dist-2*seg}km pace alvo (5:41)`,
+        steps:[{icon:'🔥',text:`${seg}km Z2`,detail:'pace 6:30–6:45'},{icon:'🏃',text:`${seg}km Z3`,detail:'pace 6:00–6:15'},{icon:'⚡',text:`${dist-2*seg}km pace alvo`,detail:'5:41–5:50/km'}]};
     }
     remaining -= (d.workout?.dist||0);
   });
 
-  // 3. Remaining off days → Z2 (min 5km, smart distribution)
-  const restOffDays = freeOffDays.filter(d=>!d.workout);
-  restOffDays.forEach(d=>{
-    if(remaining<=0) return;
-    // 80/20 rule: these should be easy Z2
-    const km = Math.max(5, Math.min(12, Math.round(remaining/(restOffDays.length||1)*priorityFactor)));
-    d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:'6:20–6:40',
-      desc:`${km}km Z2 · pace 6:20–6:40 · FC <140bpm`,
-      steps:[{icon:'🏃',text:`${km}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}]};
-    remaining -= km;
-  });
-
-  // 4. Work days — vary between work days (no identical 3x10km blocks)
+  // 3. Work days (Z2 portions)
   const workRunKms = smartWorkDayDistribution(freeWorkDays.length, remaining, workrunKm, fatigueMultiplier);
   freeWorkDays.forEach((d,i)=>{
     const session=STRENGTH_SESSIONS[strengthRotIdx%3]; strengthRotIdx++;
@@ -2817,6 +2866,17 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
         steps:[{icon:'💪',text:`Musculação — ${session.label}`,detail:'40min · manhã'},{icon:'🏃',text:`Z2 — ${km}km`,detail:`pace 6:20–6:40 · FC <140bpm · noite`}]};
       remaining -= km;
     }
+  });
+
+  // 4. Remaining off days → Z2
+  const restOffDays = freeOffDays.filter(d=>!d.workout);
+  restOffDays.forEach(d=>{
+    if(remaining<=0) return;
+    const km = Math.max(5, parseFloat((remaining/(restOffDays.length||1)).toFixed(1)));
+    d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:'6:20–6:40',
+      desc:`${km}km Z2 · pace 6:20–6:40 · FC <140bpm`,
+      steps:[{icon:'🏃',text:`${km}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}]};
+    remaining -= km;
   });
 
   // 5. Load balance: adjust Z2 days to hit km goal
