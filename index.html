@@ -4056,7 +4056,7 @@ function buildCloudPayload() {
     athleteProfile: state.athleteProfile,
     stravaConfig: state.stravaConfig,  // clientId + connected flag + athlete meta (no tokens)
     geminiKeyEncrypted: rawKey ? geminiKeyToCloud(rawKey) : null,
-    // chatHistory excluded — device-local (will move to coachSessions subcollection in v0.8.2)
+    chatHistory: state.chatHistory // Sync chat history across devices
   };
 }
 
@@ -4087,6 +4087,7 @@ async function downloadFromCloud() {
       if(data.config)         state.config         = { ...state.config,         ...data.config         };
       if(data.workouts)       state.workouts       = data.workouts;
       if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
+      if(data.chatHistory)    state.chatHistory    = data.chatHistory;
       // Restore Strava config so Client ID appears on new devices
       if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
       // Also restore Client ID to UID-scoped localStorage so Strava functions find it
@@ -4103,7 +4104,7 @@ async function downloadFromCloud() {
         }
       }
       save(); // persist cloud data to UID-scoped localStorage
-      renderDashboard(); renderLog(); renderPlanner();
+      renderDashboard(); renderLog(); renderPlanner(); renderChatMsgs();
       // Repopulate Settings fields (Strava CID, athlete profile, config)
       if(typeof loadConfig === 'function') loadConfig();
       if(typeof updateStravaBadge === 'function') updateStravaBadge();
