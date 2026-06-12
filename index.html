@@ -762,20 +762,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <button class="btn btn-primary btn-full" onclick="saveGeminiKey()">Salvar e ativar Gemini</button>
         <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="clearGeminiKey()">Remover API key</button>
       </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="label" style="margin-bottom:4px">Coach AI · OpenAI GPT-4o</div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">Cole sua API key da OpenAI para ativar o Coach real. A key fica salva só no seu dispositivo, nunca sai dele.<br/><a href="https://platform.openai.com/api-keys" style="color:var(--blue)">platform.openai.com/api-keys ↗</a></div>
-        <div class="form-group">
-          <label class="form-label">OpenAI API Key</label>
-          <div style="position:relative">
-            <input type="password" class="form-input" id="cfg-openai-key" autocomplete="new-password" placeholder="sk-..." style="padding-right:44px"/>
-            <button onclick="toggleKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px" id="key-eye">👁</button>
-          </div>
-        </div>
-        <div id="key-status" style="font-family:var(--mono);font-size:10px;margin-bottom:10px;display:none"></div>
-        <button class="btn btn-primary btn-full" onclick="saveOpenAIKey()">Salvar e testar conexão</button>
-        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="clearOpenAIKey()">Remover API key</button>
-      </div>
+
       <div class="card" style="margin-bottom:16px">
         <div class="label" style="margin-bottom:12px">🧠 Memória do Atleta</div>
         <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">O Coach usa essas informações para personalizar respostas e insights.</div>
@@ -2017,72 +2004,6 @@ function renderRaceIQ() {
   }
 }
 
-// ==================== OPENAI KEY ====================
-const OAI_KEY = 'pacemaker_oai_key';
-function getOpenAIKey() { return localStorage.getItem(OAI_KEY)||''; }
-function hasOpenAIKey() { return !!getOpenAIKey(); }
-
-function toggleKeyVisibility() {
-  const inp = document.getElementById('cfg-openai-key');
-  inp.type = inp.type==='password' ? 'text' : 'password';
-}
-
-function loadOpenAIKeyField() {
-  const k = getOpenAIKey();
-  if(k) document.getElementById('cfg-openai-key').value = k;
-  updateKeyStatus();
-}
-
-function updateKeyStatus() {
-  // Badge now always shows "offline" (mock mode)
-  const badge = document.getElementById('coach-ai-badge');
-  if(badge) { badge.textContent='offline'; badge.style.color='var(--accent)'; badge.style.background='var(--accent-dim)'; badge.style.borderColor='rgba(232,245,90,0.3)'; }
-}
-
-async function saveOpenAIKey() {
-  const key = document.getElementById('cfg-openai-key').value.trim();
-  const statusEl = document.getElementById('key-status');
-  statusEl.style.display = 'block';
-  if(!key || key.length < 20) {
-  statusEl.textContent = '✗ API key inválida';
-  statusEl.style.color = 'var(--red)';
-  return;
-}
-  statusEl.textContent = '⟳ Testando conexão com OpenAI...';
-  statusEl.style.color = 'var(--text3)';
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body: JSON.stringify({model:'gpt-4o',max_tokens:10,messages:[{role:'user',content:'ping'}]})
-    });
-    if(res.ok) {
-      localStorage.setItem(OAI_KEY, key);
-      statusEl.textContent = '✓ Conectado! Coach AI agora usa GPT-4o.';
-      statusEl.style.color = 'var(--teal)';
-      updateKeyStatus();
-      showToast('GPT-4o ativado!');
-    } else {
-      const err = await res.json();
-      statusEl.textContent = '✗ Erro: ' + (err.error?.message||res.status);
-      statusEl.style.color = 'var(--red)';
-    }
-  } catch(e) {
-    statusEl.textContent = '✗ Sem conexão. Verifique sua internet.';
-    statusEl.style.color = 'var(--red)';
-  }
-}
-
-function clearOpenAIKey() {
-  localStorage.removeItem(OAI_KEY);
-  document.getElementById('cfg-openai-key').value = '';
-  const statusEl = document.getElementById('key-status');
-  statusEl.style.display = 'block';
-  statusEl.textContent = 'API key removida. Coach voltou ao modo mock.';
-  statusEl.style.color = 'var(--text3)';
-  updateKeyStatus();
-}
-
 // ==================== GEMINI KEY ====================
 const GEMINI_KEY = 'pacemaker_gemini_key';
 function getGeminiKey() { return localStorage.getItem(GEMINI_KEY)||''; }
@@ -2112,15 +2033,35 @@ function updateGeminiBadge() {
   }
 }
 
+// ── Gemini key obfuscation (XOR with UID) ──────────────────────────────
+// Not cryptographic — prevents trivial plaintext exposure in Firestore.
+// The key is only useful to someone already authenticated as this UID.
+function xorObfuscate(str, seed) {
+  if(!seed) return str;
+  return str.split('').map((c,i) =>
+    String.fromCharCode(c.charCodeAt(0) ^ seed.charCodeAt(i % seed.length))
+  ).join('');
+}
+function geminiKeyToCloud(rawKey) {
+  const uid = state.user?.uid || '';
+  return btoa(xorObfuscate(rawKey, uid));
+}
+function geminiKeyFromCloud(encoded) {
+  try {
+    const uid = state.user?.uid || '';
+    return xorObfuscate(atob(encoded), uid);
+  } catch(e) { return ''; }
+}
+
 async function saveGeminiKey() {
   const key = document.getElementById('cfg-gemini-key').value.trim();
   const statusEl = document.getElementById('gemini-key-status');
   statusEl.style.display = 'block';
   if(!key || key.length < 20) {
-  statusEl.textContent = '✗ API key inválida';
-  statusEl.style.color = 'var(--red)';
-  return;
-}
+    statusEl.textContent = '✗ API key inválida';
+    statusEl.style.color = 'var(--red)';
+    return;
+  }
   statusEl.textContent = '⟳ Testando conexão com Gemini...';
   statusEl.style.color = 'var(--text3)';
   try {
@@ -2135,6 +2076,8 @@ async function saveGeminiKey() {
       statusEl.style.color = 'var(--teal)';
       updateGeminiBadge();
       showToast('✨ Gemini Coach ativado!');
+      // Sync key to cloud if logged in
+      if(state.user) uploadToCloud();
     } else {
       const err = await res.json();
       statusEl.textContent = '✗ ' + (err.error?.message||'Verifique a key');
@@ -2153,6 +2096,8 @@ function clearGeminiKey() {
   const statusEl = document.getElementById('gemini-key-status');
   if(statusEl) { statusEl.style.display='block'; statusEl.textContent='Gemini removido. Coach voltou ao modo offline.'; statusEl.style.color='var(--text3)'; }
   updateGeminiBadge();
+  // Remove key from cloud if logged in
+  if(state.user) uploadToCloud();
 }
 
 // ==================== GEMINI SYSTEM PROMPT ====================
@@ -3363,7 +3308,6 @@ function loadConfig() {
   document.getElementById('cfg-name').value = c.name||'';
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
-  loadOpenAIKeyField();
   loadGeminiKeyField();
   const cid = localStorage.getItem(getStravaCidKey());
   if(cid) document.getElementById('cfg-strava-id').value = cid;
@@ -3861,7 +3805,7 @@ function generateICS(workouts) {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Pacemaker//v0.7//EN',
+    'PRODID:-//Pacemaker//v0.8.2//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'X-WR-CALNAME:Pacemaker — Treinos',
@@ -4017,6 +3961,7 @@ function renderSyncIndicator() {
 
 // Phase C — Upload / Download
 function buildCloudPayload() {
+  const rawKey = getGeminiKey();
   return {
     schemaVersion: SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
@@ -4024,7 +3969,8 @@ function buildCloudPayload() {
     workouts: state.workouts,
     athleteProfile: state.athleteProfile,
     stravaConfig: state.stravaConfig,  // clientId + connected flag + athlete meta (no tokens)
-    // chatHistory excluded — device-local
+    geminiKeyEncrypted: rawKey ? geminiKeyToCloud(rawKey) : null,
+    // chatHistory excluded — device-local (will move to coachSessions subcollection in v0.8.2)
   };
 }
 
@@ -4055,11 +4001,20 @@ async function downloadFromCloud() {
       if(data.config)         state.config         = { ...state.config,         ...data.config         };
       if(data.workouts)       state.workouts       = data.workouts;
       if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
-      // Change 3: restore Strava config so Client ID appears on new devices
+      // Restore Strava config so Client ID appears on new devices
       if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
       // Also restore Client ID to UID-scoped localStorage so Strava functions find it
       if(data.stravaConfig?.clientId) {
         localStorage.setItem(getStravaCidKey(), data.stravaConfig.clientId);
+      }
+      // Restore Gemini key transparently on new devices
+      if(data.geminiKeyEncrypted) {
+        const restored = geminiKeyFromCloud(data.geminiKeyEncrypted);
+        if(restored && restored.length > 20) {
+          localStorage.setItem(GEMINI_KEY, restored);
+          if(typeof updateGeminiBadge === 'function') updateGeminiBadge();
+          if(typeof loadGeminiKeyField === 'function') loadGeminiKeyField();
+        }
       }
       save(); // persist cloud data to UID-scoped localStorage
       renderDashboard(); renderLog(); renderPlanner();
@@ -4185,6 +4140,8 @@ if('serviceWorker' in navigator) {
 }
 
 // ==================== INIT ====================
+// v0.8.2 migration: remove legacy OpenAI key if present
+localStorage.removeItem('pacemaker_oai_key');
 load();
 
 if (typeof handleStravaCallback === 'function') {
