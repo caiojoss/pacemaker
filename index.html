@@ -82,6 +82,122 @@ onAuthStateChanged(fbAuth, user => {
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--display);overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%;max-width:480px;margin:0 auto;position:relative}
+
+/* ── v0.8.5 DESKTOP LAYOUT ── */
+/* Mobile-first: desktop wrappers são transparentes no layout mobile */
+.desktop-sidebar{ display:none }
+.desktop-main{ display:contents }
+.desktop-content{ display:contents }
+.desktop-right-panel{ display:none }
+
+@media(min-width:900px){
+  html,body{overflow:auto}
+  #app{max-width:100%;flex-direction:row;height:100vh;overflow:hidden}
+
+  /* Sidebar esquerda */
+  .desktop-sidebar{
+    width:220px;flex-shrink:0;background:var(--surface);border-right:0.5px solid var(--border);
+    display:flex;flex-direction:column;padding:0;height:100vh;position:sticky;top:0;
+    overflow-y:auto;z-index:50;
+  }
+  .desktop-sidebar::-webkit-scrollbar{display:none}
+  .sidebar-logo{
+    padding:20px 20px 16px;border-bottom:0.5px solid var(--border);
+    display:flex;align-items:center;gap:10px;
+    font-size:15px;font-weight:800;letter-spacing:.08em;color:var(--accent);
+  }
+  .sidebar-logo-pulse{width:8px;height:8px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite;flex-shrink:0}
+  .sidebar-race-chip{font-family:var(--mono);font-size:9px;color:var(--orange);background:var(--orange-dim);border:0.5px solid rgba(255,140,66,.3);padding:3px 8px;border-radius:20px;margin-top:4px}
+  .sidebar-nav{padding:10px 10px;flex:1}
+  .sidebar-nav-item{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-sm);
+    font-size:13px;font-weight:600;cursor:pointer;color:var(--text3);transition:all .15s;
+    border:none;background:none;width:100%;text-align:left;margin-bottom:2px;
+  }
+  .sidebar-nav-item:hover{background:var(--surface2);color:var(--text2)}
+  .sidebar-nav-item.active{background:var(--accent-dim);color:var(--accent)}
+  .sidebar-nav-item svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.5;flex-shrink:0}
+  .sidebar-nav-label{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.04em}
+  .sidebar-divider{height:.5px;background:var(--border);margin:8px 0}
+  .sidebar-footer{padding:12px 14px;border-top:0.5px solid var(--border)}
+  .sidebar-sync-indicator{font-family:var(--mono);font-size:9px;color:var(--text3);display:flex;align-items:center;gap:6px}
+
+  /* Layout centro + direita */
+  .desktop-main{display:flex;flex:1;overflow:hidden}
+  .desktop-content{flex:1;overflow-y:auto;overflow-x:hidden}
+  .desktop-content::-webkit-scrollbar{width:4px}
+  .desktop-content::-webkit-scrollbar-track{background:transparent}
+  .desktop-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+  /* Painel contextual direito */
+  .desktop-right-panel::-webkit-scrollbar{display:none}
+  .right-panel-header{
+    padding:14px 16px 10px;border-bottom:.5px solid var(--border);
+    font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--text3);display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;user-select:none;
+  }
+  .right-panel-header:hover{color:var(--text2)}
+  .right-panel-body{padding:14px 14px;flex:1}
+  .right-panel-section{margin-bottom:16px}
+  .right-panel-section-title{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+  .context-bar-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:.5px solid var(--border);font-size:11px;font-family:var(--mono)}
+  .context-bar-item:last-child{border-bottom:none}
+  .context-bar-key{color:var(--text3);font-size:10px}
+  .context-bar-val{color:var(--text);font-weight:600}
+  .mini-bar-wrap{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;margin-top:3px}
+  .mini-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
+
+  /* 8w chart */
+  .trend-chart{display:flex;align-items:flex-end;gap:3px;height:60px;margin:8px 0 4px}
+  .trend-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .trend-bar-fill{width:100%;border-radius:2px 2px 0 0;transition:height .4s ease;min-height:2px}
+  .trend-bar-label{font-family:var(--mono);font-size:7px;color:var(--text3);white-space:nowrap}
+
+  /* Ocultar mobile nav e header no desktop */
+  .bottom-nav{display:none!important}
+  .app-header{display:none!important}
+  /* Mostrar elementos desktop */
+  .desktop-sidebar{display:flex!important}
+  .desktop-main{display:flex!important;flex:1;overflow:hidden}
+  .desktop-right-panel{display:flex!important;flex-direction:column;width:280px;flex-shrink:0;border-left:.5px solid var(--border);background:var(--surface);overflow-y:auto}
+
+  /* Scroll area no desktop: padding sem bottom-nav */
+  .scroll-area{padding:20px 24px 24px!important;-webkit-overflow-scrolling:auto!important;min-height:100%;overflow:visible!important}
+  /* desktop-content handles the scroll */
+  .desktop-content{height:100vh}
+
+  /* Seção Planner grid maior no desktop */
+  .cal-grid{grid-template-columns:repeat(7,1fr)!important}
+  .cal-day{min-height:90px!important}
+
+  /* Chat mais alto no desktop */
+  .chat-msgs{max-height:480px!important;min-height:320px!important}
+
+  /* Desktop header interno */
+  .desktop-section-header{
+    padding:20px 0 12px;border-bottom:.5px solid var(--border);margin-bottom:20px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .desktop-section-header h1{font-size:22px;font-weight:800}
+
+  /* Toast no desktop: reposition */
+  #toast{bottom:24px!important;left:50%!important;transform:translateX(-50%) translateY(20px)!important}
+  #toast.show{transform:translateX(-50%) translateY(0)!important}
+
+  /* Weekly report section dedicada */
+  #sec-weekly-reports .report-timeline{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+  /* Desktop dashboard 2-col grid */
+  .db-desktop-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  .db-col-full{grid-column:1/-1}
+
+  /* Wider modals on desktop */
+  .modal{max-width:540px!important}
+
+  /* Coach section: comfortable height */
+  .chat-msgs{max-height:55vh!important}
+}
 /* HEADER */
 .app-header{
   padding:calc(12px + var(--safe-top)) 20px 12px;
@@ -352,6 +468,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 </head>
 <body>
 <div id="app">
+  <!-- Mobile header (hidden on desktop) -->
   <div class="app-header">
     <div class="logo"><div class="logo-pulse"></div>PACEMAKER</div>
     <div class="header-right">
@@ -360,6 +477,57 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
     </div>
   </div>
 
+  <!-- v0.8.5: Desktop Sidebar (hidden on mobile via CSS) -->
+  <nav class="desktop-sidebar" id="desktop-sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-pulse"></div>
+      PACEMAKER
+    </div>
+    <div style="padding:10px 14px 6px">
+      <div class="sidebar-race-chip" id="sidebar-countdown">-- dias para a prova</div>
+    </div>
+    <div class="sidebar-nav">
+      <button class="sidebar-nav-item active" id="snav-dashboard" onclick="goTo('sec-dashboard')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span class="sidebar-nav-label">Dashboard</span>
+      </button>
+      <button class="sidebar-nav-item" id="snav-coach" onclick="goTo('sec-coach')">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="sidebar-nav-label">Coach AI</span>
+      </button>
+      <button class="sidebar-nav-item" id="snav-planner" onclick="goTo('sec-planner')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span class="sidebar-nav-label">Planner</span>
+      </button>
+      <button class="sidebar-nav-item" id="snav-race" onclick="goTo('sec-race')">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span class="sidebar-nav-label">Race IQ</span>
+      </button>
+      <button class="sidebar-nav-item" id="snav-weekly-reports" onclick="goTo('sec-weekly-reports')">
+        <svg viewBox="0 0 24 24"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+        <span class="sidebar-nav-label">Weekly Reports</span>
+      </button>
+      <div class="sidebar-divider"></div>
+      <button class="sidebar-nav-item" id="snav-log" onclick="goTo('sec-log')">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span class="sidebar-nav-label">Histórico</span>
+      </button>
+      <button class="sidebar-nav-item" id="snav-settings" onclick="goTo('sec-settings')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span class="sidebar-nav-label">Configurações</span>
+      </button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="sidebar-sync-indicator">
+        <div id="sidebar-sync-dot" style="width:6px;height:6px;border-radius:50%;background:var(--border2)"></div>
+        <span id="sidebar-sync-label">offline</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- v0.8.5: Desktop content + right panel wrapper -->
+  <div class="desktop-main" id="desktop-main">
+  <div class="desktop-content" id="desktop-content">
   <div class="scroll-area" id="scroll-area">
     <!-- DASHBOARD -->
     <div id="sec-dashboard" class="section active">
@@ -817,7 +985,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
       <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:20px;padding-bottom:10px">PACEMAKER v1.0 · Seus dados ficam no dispositivo</div>
     </div>
+
+    <!-- v0.8.5: WEEKLY REPORTS SECTION (desktop) -->
+    <div id="sec-weekly-reports" class="section">
+      <div class="section-title">
+        <span>Weekly Reports</span>
+        <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="renderWeeklyReports()">↻ Atualizar</button>
+      </div>
+      <div id="weekly-reports-content"></div>
+    </div>
   </div>
+
+  </div><!-- /desktop-content -->
+
+  <!-- v0.8.5: Right Context Panel (desktop only) -->
+  <div class="desktop-right-panel" id="desktop-right-panel">
+    <div class="right-panel-header" onclick="toggleRightPanel()">
+      <span>Context Engine v1</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    </div>
+    <div class="right-panel-body" id="right-panel-body">
+      <!-- Populated by updateRightPanel() -->
+    </div>
+  </div>
+
+  </div><!-- /desktop-main -->
 
   <!-- BOTTOM NAV -->
   <nav class="bottom-nav">
@@ -1117,6 +1309,38 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   </div>
 </div>
 
+<!-- v0.8.5: MODAL — Coach Confirm Plan -->
+<div class="modal-overlay" id="modal-coach-plan">
+  <div class="modal" style="max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title">Confirmar Plano do Coach</div>
+      <button class="modal-close" onclick="closeModal('modal-coach-plan')">✕</button>
+    </div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:14px;padding:8px 12px;background:var(--surface2);border-radius:var(--r-sm)" id="cpm-subtitle">
+      Semana detectada pelo Coach
+    </div>
+    <!-- Workout rows -->
+    <div id="cpm-workout-rows" style="margin-bottom:16px"></div>
+    <!-- Summary -->
+    <div style="padding:10px 12px;background:var(--surface2);border-radius:var(--r-sm);margin-bottom:16px;font-family:var(--mono);font-size:11px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span style="color:var(--text3)">Total planejado</span>
+        <span id="cpm-total-km" style="color:var(--accent);font-weight:700">-- km</span>
+      </div>
+      <div style="display:flex;justify-content:space-between">
+        <span style="color:var(--text3)">Sessões</span>
+        <span id="cpm-sessions" style="color:var(--text2)">--</span>
+      </div>
+    </div>
+    <!-- Actions -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <button class="btn btn-ghost" onclick="closeModal('modal-coach-plan')">Cancelar</button>
+      <button class="btn btn-ghost" onclick="coachPlanToPlanner()" style="color:var(--accent);border-color:rgba(232,245,90,0.3)">Ajustar no Planner</button>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="confirmCoachPlan()">Confirmar e Salvar no Calendário</button>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div id="toast">Treino salvo!</div>
 
@@ -1181,18 +1405,40 @@ function load() {
 // ==================== NAV ====================
 function goTo(sec) {
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.getElementById(sec).classList.add('active');
+  const secEl = document.getElementById(sec);
+  if(secEl) secEl.classList.add('active');
+
+  // Mobile bottom-nav sync
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   const navId = 'nav-' + sec.replace('sec-','');
   const nb = document.getElementById(navId);
   if(nb) nb.classList.add('active');
-  document.getElementById('scroll-area').scrollTop = 0;
+
+  // v0.8.5: Desktop sidebar sync
+  document.querySelectorAll('.sidebar-nav-item').forEach(b=>b.classList.remove('active'));
+  const snavId = 'snav-' + sec.replace('sec-','');
+  const snb = document.getElementById(snavId);
+  if(snb) snb.classList.add('active');
+
+  // Scroll to top (both containers)
+  const sa = document.getElementById('scroll-area');
+  if(sa) sa.scrollTop = 0;
+  const dc = document.getElementById('desktop-content');
+  if(dc) dc.scrollTop = 0;
+
   if(sec==='sec-dashboard') renderDashboard();
   if(sec==='sec-log') renderLog();
   if(sec==='sec-planner') renderPlanner();
   if(sec==='sec-race') renderRaceIQ();
-  if(sec==='sec-coach') renderCoachContext();
+  if(sec==='sec-coach') { renderCoachContext(); updateRightPanel(); }
   if(sec==='sec-settings') loadConfig();
+  if(sec==='sec-weekly-reports') renderWeeklyReports();
+
+  // v0.8.5: show/hide right panel contextually
+  const rightPanel = document.getElementById('desktop-right-panel');
+  if(rightPanel) {
+    rightPanel.style.display = (sec==='sec-coach'||sec==='sec-dashboard') ? '' : 'none';
+  }
 }
 
 // ==================== MODAL ====================
@@ -1480,7 +1726,10 @@ function renderWeeklyReport() {
     <div class="card card-accent" style="margin-bottom:16px; border-left: 4px solid var(--accent)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="label" style="margin-bottom:0">Weekly Report · Semana Passada</div>
-        <span class="badge badge-accent">v0.8.2</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-accent">v0.8.5</span>
+          <button class="btn btn-ghost" style="font-size:9px;padding:4px 8px;display:none" id="wr-fulllink" onclick="goTo('sec-weekly-reports')">Ver completo →</button>
+        </div>
       </div>
       
       <div class="grid3" style="margin-bottom:16px">
@@ -1503,7 +1752,7 @@ function renderWeeklyReport() {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div>
-          <div class="label" style="font-size:8px;color:var(--green)">✓ Acertos</div>
+          <div class="label" style="font-size:8px;color:var(--teal)">✓ Acertos</div>
           ${acertos.map(a => `<div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:4px">· ${a}</div>`).join('')}
         </div>
         <div>
@@ -1512,11 +1761,14 @@ function renderWeeklyReport() {
         </div>
       </div>
     </div>`;
+  // Show "Ver completo" link on desktop
+  if(window.matchMedia('(min-width:900px)').matches) {
+    const lnk = document.getElementById('wr-fulllink');
+    if(lnk) lnk.style.display = '';
+  }
 }
 
-function renderDashboard() {
-  // Render Weekly Report first (Fase 5)
-  renderWeeklyReport();
+function renderDashboardBase() {
 
   // Countdown
   const rc = state.config.raceDate;
@@ -2484,11 +2736,23 @@ function renderCoachContext() {
 
 function renderChatMsgs() {
   const el = document.getElementById('chat-msgs');
-  el.innerHTML = state.chatHistory.map(m=>`
-    <div class="msg ${m.role}">
-      <div class="msg-av ${m.role}">${m.role==='coach'?'PM':'CA'}</div>
-      <div class="msg-bubble">${m.text.replace(/\n/g,'<br/>')}</div>
-    </div>`).join('');
+  if(!el) return;
+  // v0.8.5: detect coach plan suggestions and add confirm button
+  el.innerHTML = state.chatHistory.map((m, idx)=>{
+    const isCoach = m.role==='coach';
+    const planWorkouts = isCoach ? detectCoachPlanInText(m.text) : null;
+    const planBtn = planWorkouts && planWorkouts.length>=3
+      ? `<button class="btn btn-primary" style="margin-top:10px;font-size:11px;padding:8px 14px;width:100%" onclick="openCoachPlanModal(${idx})">📅 Confirmar Plano para Próxima Semana</button>`
+      : '';
+    return `
+      <div class="msg ${m.role}">
+        <div class="msg-av ${m.role}">${m.role==='coach'?'PM':'CA'}</div>
+        <div class="msg-bubble">
+          ${m.text.replace(/\n/g,'<br/>')}
+          ${planBtn}
+        </div>
+      </div>`;
+  }).join('');
   el.scrollTop = el.scrollHeight;
 }
 
@@ -4037,6 +4301,13 @@ function setSyncStatus(status, msg) {
     indicator.style.display = l.icon ? 'block' : 'none';
   }
   if(statusText) statusText.textContent = l.text;
+  // v0.8.5: update sidebar sync dot
+  const syncDot = document.getElementById('sidebar-sync-dot');
+  const syncLabel = document.getElementById('sidebar-sync-label');
+  const dotColors = { idle:'var(--border2)', syncing:'var(--blue)', synced:'var(--teal)', offline:'var(--orange)', error:'var(--red)' };
+  const dotLabels = { idle:'local only', syncing:'sincronizando...', synced:'sincronizado', offline:'offline', error:'erro' };
+  if(syncDot) syncDot.style.background = dotColors[status]||'var(--border2)';
+  if(syncLabel) syncLabel.textContent = dotLabels[status]||'';
 }
 
 // Phase B — Auth UI
@@ -4286,6 +4557,465 @@ if('serviceWorker' in navigator) {
   navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
 }
 
+// ==================== v0.8.5 DESKTOP ====================
+
+// ── Right Panel (Context Engine visual) ──────────────────
+let _rightPanelCollapsed = false;
+function toggleRightPanel() {
+  _rightPanelCollapsed = !_rightPanelCollapsed;
+  const body = document.getElementById('right-panel-body');
+  const chevron = document.querySelector('.right-panel-header svg polyline');
+  if(body) body.style.display = _rightPanelCollapsed ? 'none' : '';
+  if(chevron) chevron.setAttribute('points', _rightPanelCollapsed ? '9 18 15 12 9 6' : '15 18 9 12 15 6');
+}
+
+function updateRightPanel() {
+  const body = document.getElementById('right-panel-body');
+  if(!body) return;
+  const c = buildCoachContext();
+  const h = c.history8w;
+  const insights = generateCoachInsights(c);
+
+  // 8-week volume trend bars
+  const maxKm = Math.max(...h.map(w=>w.km), 1);
+  const barsHtml = h.map(w=>{
+    const pct = Math.round(w.km / maxKm * 100);
+    const col = w.adherence>=80 ? 'var(--teal)' : w.adherence>=60 ? 'var(--orange)' : 'var(--red)';
+    return `<div class="trend-bar-col">
+      <div class="trend-bar-fill" style="height:${Math.max(4,pct*0.6)}px;background:${col}"></div>
+      <div class="trend-bar-label">${w.label}</div>
+    </div>`;
+  }).join('');
+
+  // Fatigue status badge
+  const fatigueVal = parseFloat(c.fatigueTrend)||0;
+  const fatigueColor = fatigueVal>=4?'var(--red)':fatigueVal>=3?'var(--orange)':'var(--teal)';
+  const fatigueLabel = fatigueVal>=4?'Alta':fatigueVal>=3?'Moderada':'Baixa';
+
+  // Race countdown display
+  const raceInfo = state.config.raceDate
+    ? `<div class="context-bar-item"><span class="context-bar-key">Prova</span><span class="context-bar-val" style="color:var(--accent)">${c.days} dias</span></div>`
+    : '';
+
+  body.innerHTML = `
+    <!-- Insights -->
+    <div class="right-panel-section">
+      <div class="right-panel-section-title">Insights</div>
+      ${insights.length>0
+        ? insights.map(i=>`<div style="font-family:var(--mono);font-size:10px;color:var(--text2);padding:5px 0;border-bottom:.5px solid var(--border);line-height:1.5">${i}</div>`).join('')
+        : `<div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Registre treinos para gerar insights.</div>`
+      }
+    </div>
+
+    <!-- 8w Volume Chart -->
+    <div class="right-panel-section">
+      <div class="right-panel-section-title">Volume 8 semanas</div>
+      <div class="trend-chart">${barsHtml}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km por semana · cor = aderência</div>
+    </div>
+
+    <!-- Key Stats -->
+    <div class="right-panel-section">
+      <div class="right-panel-section-title">Estado atual</div>
+      ${raceInfo}
+      <div class="context-bar-item">
+        <span class="context-bar-key">Prontidão</span>
+        <span class="context-bar-val" style="color:${c.rs>=70?'var(--teal)':c.rs>=50?'var(--orange)':'var(--red)'}">${c.rs}/100</span>
+      </div>
+      <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${c.rs}%;background:${c.rs>=70?'var(--teal)':'var(--orange)'}"></div></div>
+      <div class="context-bar-item" style="margin-top:6px">
+        <span class="context-bar-key">Fadiga recente</span>
+        <span class="context-bar-val" style="color:${fatigueColor}">${fatigueLabel} (${c.fatigueTrend||'--'}/5)</span>
+      </div>
+      <div class="context-bar-item">
+        <span class="context-bar-key">Semana atual</span>
+        <span class="context-bar-val">${c.wkm} km</span>
+      </div>
+      <div class="context-bar-item">
+        <span class="context-bar-key">Previsão maratona</span>
+        <span class="context-bar-val" style="color:var(--accent)">${c.pred?secToTime(c.pred):'--'}</span>
+      </div>
+    </div>
+
+    <!-- Adherence last 4w -->
+    <div class="right-panel-section">
+      <div class="right-panel-section-title">Aderência 4 semanas</div>
+      ${h.slice(-4).map(w=>`
+        <div style="margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text3)">${w.label}</span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text2)">${w.adherence}%</span>
+          </div>
+          <div class="mini-bar-wrap">
+            <div class="mini-bar-fill" style="width:${w.adherence}%;background:${w.adherence>=80?'var(--teal)':w.adherence>=60?'var(--orange)':'var(--red)'}"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+// ── Sidebar countdown & sync indicator ───────────────────
+function updateSidebarCountdown() {
+  const el = document.getElementById('sidebar-countdown');
+  const hc = document.getElementById('header-countdown');
+  if(!el) return;
+  if(state.config.raceDate) {
+    const days = daysBetween(today(), state.config.raceDate);
+    const txt = days>0 ? `${days} dias para a prova` : 'Dia D! 🏁';
+    el.textContent = txt;
+    if(hc) hc.textContent = days>0?days+'d 🏁':'Dia D!';
+  } else {
+    el.textContent = 'Configure a prova';
+  }
+}
+
+// ── Weekly Reports Section ────────────────────────────────
+function renderWeeklyReports() {
+  const el = document.getElementById('weekly-reports-content');
+  if(!el) return;
+
+  const c = buildCoachContext();
+  const h = c.history8w;
+
+  // Header
+  el.innerHTML = '';
+
+  // Summary cards (last 4 weeks)
+  const weeks = h.slice(-4).reverse();
+  const cardsHtml = weeks.map((w, i)=>{
+    const label = i===0 ? 'Semana passada' : `${i+1} semanas atrás`;
+    const volColor = w.km>=40?'var(--teal)':w.km>=25?'var(--orange)':'var(--text3)';
+    const adhColor = w.adherence>=80?'var(--teal)':w.adherence>=60?'var(--orange)':'var(--red)';
+    return `
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div>
+          <div class="label" style="margin-bottom:2px">${label}</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">${w.label}</div>
+        </div>
+        <span class="badge" style="color:${adhColor};border-color:${adhColor}33;background:${adhColor}11">Adh ${w.adherence}%</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;margin-bottom:12px">
+        <div style="padding:8px 4px;background:var(--surface2);border-radius:8px">
+          <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Volume</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${volColor}">${w.km}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--text3)">km</div>
+        </div>
+        <div style="padding:8px 4px;background:var(--surface2);border-radius:8px">
+          <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Longão</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text2)">${w.longDist||0}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--text3)">km</div>
+        </div>
+        <div style="padding:8px 4px;background:var(--surface2);border-radius:8px">
+          <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Pace</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text2)">${secsToPaceStr(w.pace)||'--'}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--text3)">/km</div>
+        </div>
+        <div style="padding:8px 4px;background:var(--surface2);border-radius:8px">
+          <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Fadiga</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:${w.fatigue>=4?'var(--red)':w.fatigue>=3?'var(--orange)':'var(--teal)'}">${w.fatigue||0}</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--text3)">/5</div>
+        </div>
+      </div>
+      <!-- Mini bar adherence -->
+      <div style="margin-bottom:4px;display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3)">
+        <span>Aderência ao plano</span><span style="color:${adhColor}">${w.adherence}%</span>
+      </div>
+      <div class="mini-bar-wrap" style="height:5px">
+        <div class="mini-bar-fill" style="width:${w.adherence}%;background:${adhColor}"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 8-week trend chart (volume bars)
+  const maxKm = Math.max(...h.map(w=>w.km),1);
+  const trendHtml = `
+    <div class="card" style="margin-bottom:14px">
+      <div class="label" style="margin-bottom:14px">Tendência de Volume · 8 Semanas</div>
+      <div style="display:flex;align-items:flex-end;gap:4px;height:80px;margin-bottom:8px">
+        ${h.map(w=>{
+          const pct = Math.round(w.km/maxKm*100);
+          const col = w.adherence>=80?'var(--teal)':w.adherence>=60?'var(--orange)':'var(--red)';
+          return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">
+            <div style="width:100%;border-radius:2px 2px 0 0;background:${col};height:${Math.max(4,pct*0.8)}px;transition:height .4s"></div>
+            <div style="font-family:var(--mono);font-size:8px;color:var(--text3);white-space:nowrap">${w.label}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">Cor: 🟢 ≥80% adh · 🟡 60-79% · 🔴 &lt;60%</div>
+    </div>`;
+
+  // Risks & achievements summary
+  const lastW = c.lastWeek||{km:0,adherence:0,fatigue:0};
+  const prevW = h[5]||{km:0};
+  const volDiff = prevW.km>0?Math.round((lastW.km/prevW.km-1)*100):0;
+  const acertos = [];
+  const riscos = [];
+  if(lastW.adherence>=90) acertos.push('Consistência de elite (aderência ≥90%)');
+  if(volDiff>0&&volDiff<=15) acertos.push(`Progressão de volume segura (+${volDiff}%)`);
+  if(lastW.longDist>=18) acertos.push(`Longão executado (${lastW.longDist}km)`);
+  if(acertos.length===0) acertos.push('Treinos registrados com sucesso');
+  if(lastW.fatigue>=4) riscos.push('Fadiga acumulada elevada — considere deload');
+  if(volDiff>20) riscos.push(`Aumento de volume brusco (+${volDiff}%) — risco de lesão`);
+  if(lastW.adherence<70) riscos.push('Baixa aderência — revise o plano');
+  if(riscos.length===0) riscos.push('Nenhum risco imediato detectado');
+
+  const analysisHtml = `
+    <div class="card" style="margin-bottom:14px">
+      <div class="label" style="margin-bottom:12px">Análise Qualitativa · Semana Passada</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div class="label" style="font-size:9px;color:var(--teal);margin-bottom:8px">✓ Acertos</div>
+          ${acertos.map(a=>`<div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:6px;padding-left:8px;border-left:2px solid var(--teal)">· ${a}</div>`).join('')}
+        </div>
+        <div>
+          <div class="label" style="font-size:9px;color:var(--orange);margin-bottom:8px">⚠ Atenções</div>
+          ${riscos.map(r=>`<div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin-bottom:6px;padding-left:8px;border-left:2px solid var(--orange)">· ${r}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  el.innerHTML = `
+    <div style="padding:20px 0 8px;margin-bottom:16px;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <h1 style="font-size:20px;font-weight:800;margin-bottom:4px">Weekly Reports</h1>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Análise das últimas 8 semanas de treino</div>
+      </div>
+      <span class="badge badge-accent">v0.8.5</span>
+    </div>
+    ${trendHtml}
+    ${analysisHtml}
+    <div class="label" style="margin-bottom:12px;letter-spacing:.1em">DETALHAMENTO SEMANAL</div>
+    ${cardsHtml}
+    <div style="text-align:center;font-family:var(--mono);font-size:9px;color:var(--text3);padding:16px 0">
+      Dados baseados nos treinos registrados · v0.8.5 Context Engine
+    </div>
+  `;
+}
+
+// ── Coach Plan Detection & Confirmation Modal ─────────────
+// Detects a coach message suggesting a plan and shows the "Confirmar Plano" button
+let _coachPlanData = null; // { workouts: [{day, type, dist, notes}], weekLabel }
+
+function detectCoachPlanInText(text) {
+  // Look for patterns like "Seg: Z2 10km", "Ter: Musculação", "Sex: Longão 22km"
+  const dayMap = {seg:'Seg',ter:'Ter',qua:'Qua',qui:'Qui','sex':'Sex','sáb':'Sáb',sab:'Sáb',dom:'Dom'};
+  const typeMap = {
+    z2:'z2', rodagem:'z2', base:'z2',
+    longão:'long', longao:'long', longo:'long',
+    intervalado:'interval', tiros:'interval', interval:'interval',
+    progressivo:'progressivo', tempo:'tempo',
+    musculação:'strength', musculacao:'strength', musculação:'strength',
+    recuperação:'recovery', recovery:'recovery', descanso:'recovery'
+  };
+  const lines = text.toLowerCase().split('\n');
+  const found = [];
+  for(const line of lines) {
+    for(const [dayKey, dayName] of Object.entries(dayMap)) {
+      if(!line.startsWith(dayKey+':')&&!line.startsWith(dayKey+' ')) continue;
+      let type = 'z2', dist = 0;
+      for(const [tKey, tVal] of Object.entries(typeMap)) {
+        if(line.includes(tKey)) { type=tVal; break; }
+      }
+      const kmMatch = line.match(/(\d+(?:\.\d+)?)\s*km/);
+      if(kmMatch) dist = parseFloat(kmMatch[1]);
+      found.push({day:dayName, type, dist, notes: line.trim()});
+      break;
+    }
+  }
+  return found.length>=3 ? found : null;
+}
+
+
+
+function openCoachPlanModal(msgIdx) {
+  const msg = state.chatHistory[msgIdx];
+  if(!msg) return;
+  const workouts = detectCoachPlanInText(msg.text);
+  if(!workouts || workouts.length===0) return;
+
+  // Map day names to actual dates (next week by default)
+  const dayNames = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  const nextMon = new Date(weekStart(today())+'T12:00:00');
+  nextMon.setDate(nextMon.getDate()+7);
+
+  const dateMap = {};
+  dayNames.forEach((name,i)=>{
+    const d = new Date(nextMon); d.setDate(d.getDate()+i);
+    dateMap[name] = d.toISOString().split('T')[0];
+  });
+
+  // Assign dates to detected workouts
+  const planned = workouts.map(w=>({...w, date: dateMap[w.day]||null})).filter(w=>w.date);
+
+  // Build week label
+  const endDate = new Date(nextMon); endDate.setDate(endDate.getDate()+6);
+  const weekLabel = `${nextMon.getDate()}/${nextMon.getMonth()+1} – ${endDate.getDate()}/${endDate.getMonth()+1}`;
+
+  _coachPlanData = { workouts: planned, weekLabel, startDate: nextMon.toISOString().split('T')[0] };
+
+  // Render modal rows with editable km inputs
+  const rowsEl = document.getElementById('cpm-workout-rows');
+  const subtitleEl = document.getElementById('cpm-subtitle');
+  if(subtitleEl) subtitleEl.textContent = `Semana ${weekLabel} — detectada na conversa com o Coach`;
+
+  rowsEl.innerHTML = planned.map((w,i)=>{
+    const typeColors = {long:'var(--orange)',interval:'var(--red)',strength:'var(--teal)',z2:'var(--accent)',recovery:'var(--text3)',progressivo:'var(--orange)'};
+    const col = typeColors[w.type]||'var(--text2)';
+    const distField = w.type!=='strength'
+      ? `<input type="number" step="0.5" min="0" max="50" value="${w.dist||0}"
+           style="width:64px;background:var(--surface2);border:.5px solid var(--border2);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:12px;color:var(--text);text-align:right"
+           oninput="updateCpmKm(${i},this.value)" /> <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">km</span>`
+      : `<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">40 min</span>`;
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:.5px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:10px;flex:1">
+          <div style="text-align:center;min-width:32px">
+            <div style="font-size:11px;font-weight:700;color:var(--text)">${w.day}</div>
+            <div style="font-family:var(--mono);font-size:8px;color:var(--text3)">${w.date?w.date.slice(5):''}</div>
+          </div>
+          <span class="wchip ${typeChipClass(w.type)}" style="font-size:9px">${typeLabel(w.type)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">${distField}</div>
+      </div>`;
+  }).join('');
+
+  updateCpmSummary();
+  openModal('modal-coach-plan');
+}
+
+function updateCpmKm(idx, val) {
+  if(_coachPlanData && _coachPlanData.workouts[idx]) {
+    _coachPlanData.workouts[idx].dist = parseFloat(val)||0;
+    updateCpmSummary();
+  }
+}
+
+function updateCpmSummary() {
+  if(!_coachPlanData) return;
+  const total = _coachPlanData.workouts.reduce((a,w)=>a+(w.dist||0),0);
+  const sessions = _coachPlanData.workouts.length;
+  const elTotal = document.getElementById('cpm-total-km');
+  const elSess = document.getElementById('cpm-sessions');
+  if(elTotal) elTotal.textContent = total.toFixed(1)+' km';
+  if(elSess) elSess.textContent = sessions+' sessões';
+}
+
+function confirmCoachPlan() {
+  if(!_coachPlanData) return;
+  const {workouts, weekLabel, startDate} = _coachPlanData;
+
+  // Calculate week end
+  const endDate = new Date(startDate+'T12:00:00');
+  endDate.setDate(endDate.getDate()+6);
+  const endDateStr = endDate.toISOString().split('T')[0];
+
+  // Remove existing planned for that week
+  state.workouts = state.workouts.filter(w=>!(w.planned&&w.date>=startDate&&w.date<=endDateStr));
+
+  // Insert new planned workouts
+  workouts.forEach(w=>{
+    if(!w.date) return;
+    state.workouts.push({
+      id: 'plan_'+w.date+'_'+w.type,
+      date: w.date,
+      type: w.type,
+      dist: w.dist||0,
+      pace: '', hr:0, rpe:0, fatigue:0,
+      notes: w.notes||'',
+      planned: true
+    });
+  });
+
+  save();
+  closeModal('modal-coach-plan');
+  showToast('✅ Plano do Coach salvo no Planner!');
+
+  // Add confirmation to chat
+  const total = workouts.reduce((a,w)=>a+(w.dist||0),0);
+  state.chatHistory.push({
+    role:'coach',
+    text:`✅ Plano confirmado para a semana ${weekLabel}!\n\n${workouts.map(w=>`→ **${w.day}**: ${typeLabel(w.type)}${w.dist?' — '+w.dist+'km':''}`).join('\n')}\n\nTotal: ${total.toFixed(1)}km planejados. Veja no Planner para acompanhar!`
+  });
+  save();
+  renderChatMsgsWithPlanDetection();
+  _coachPlanData = null;
+}
+
+function coachPlanToPlanner() {
+  // First confirm the plan silently, then navigate to Planner
+  if(_coachPlanData) {
+    confirmCoachPlan();
+  }
+  closeModal('modal-coach-plan');
+  goTo('sec-planner');
+}
+
+// ── Init sidebar countdown on load ────────────────────────
+function initDesktopUI() {
+  updateSidebarCountdown();
+  // Hide right panel on non-coach/dashboard sections by default
+  const rightPanel = document.getElementById('desktop-right-panel');
+  if(rightPanel) rightPanel.style.display = '';
+  // Sync sidebar sync indicator with cloud state
+  const syncDot = document.getElementById('sidebar-sync-dot');
+  const syncLabel = document.getElementById('sidebar-sync-label');
+  if(syncDot && syncLabel) {
+    if(state.user) {
+      syncDot.style.background = navigator.onLine ? 'var(--teal)' : 'var(--orange)';
+      syncLabel.textContent = navigator.onLine ? 'sincronizado' : 'offline';
+    } else {
+      syncDot.style.background = 'var(--border2)';
+      syncLabel.textContent = 'local only';
+    }
+  }
+}
+
+// ── Dashboard: update sidebar countdown on render ─────────
+// v0.8.5: wrap renderDashboard to add desktop enhancements
+// NOTE: _originalRenderDashboard defined at line ~1766 as renderDashboardBase
+function renderDashboard() {
+  renderDashboardBase();
+  updateSidebarCountdown();
+  if(window.matchMedia('(min-width:900px)').matches) applyDashboardDesktopGrid();
+}
+
+function applyDashboardDesktopGrid() {
+  // Use CSS flexbox with order instead of DOM manipulation — safer, no regression risk
+  const secDash = document.getElementById('sec-dashboard');
+  if(!secDash || secDash.dataset.desktopGrid==='1') return;
+  secDash.dataset.desktopGrid = '1';
+
+  // Give each known card an order and width via inline style (desktop only)
+  const styleId = 'db-desktop-style';
+  if(document.getElementById(styleId)) return;
+  const s = document.createElement('style');
+  s.id = styleId;
+  s.textContent = `
+    @media(min-width:900px){
+      #sec-dashboard .scroll-area{
+        display:flex;flex-wrap:wrap;gap:16px;align-items:start;
+      }
+      #sec-dashboard .section-title{width:100%;order:-10}
+      /* Left column (~55%) */
+      #db-weekly-report,
+      #sec-dashboard #db-next-card { width:calc(55% - 8px); }
+      /* Right column (~45%) */
+      #sec-dashboard .grid3,
+      #db-exec-card,
+      #db-month-bar, #db-sub4-bar { width:calc(45% - 8px); }
+      /* Progress cards wrapper */
+      #db-exec-card { order:2; }
+      #sec-dashboard #db-next-card { order:3; }
+      #db-weekly-report { order:4; }
+      /* Recent workouts: always full width at bottom */
+      #sec-dashboard [style*="Treinos recentes"],
+      #db-recent-list { width:100% !important; order:99; }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
 // ==================== INIT ====================
 // v0.8.2 migration: remove legacy OpenAI key if present
 localStorage.removeItem('pacemaker_oai_key');
@@ -4294,18 +5024,14 @@ load();
 if (typeof handleStravaCallback === 'function') {
   handleStravaCallback().then(()=>{
     renderDashboard();
-
-    if(typeof updateStravaBadge === 'function'){
-      updateStravaBadge();
-    }
-
-  }).catch(()=>{
-    renderDashboard();
-  });
-
+    if(typeof updateStravaBadge === 'function') updateStravaBadge();
+  }).catch(()=>{ renderDashboard(); });
 } else {
   renderDashboard();
 }
+
+// v0.8.5: init desktop sidebar + right panel
+initDesktopUI();
 // Close modal on overlay click
 document.querySelectorAll('.modal-overlay').forEach(o=>{
   o.addEventListener('click',e=>{ if(e.target===o) o.classList.remove('show'); });

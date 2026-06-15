@@ -1,0 +1,54 @@
+# Pacemaker: Visão de Produto v1.0
+
+## 1. O Problema Resolvido
+
+Corredores amadores e semi-profissionais frequentemente enfrentam desafios na gestão de seus treinos: planos genéricos que não se adaptam à sua realidade, dificuldade em interpretar dados de performance, falta de feedback personalizado e o risco de overtraining ou undertraining. A maioria das ferramentas existentes oferece dados brutos ou planos estáticos, exigindo do atleta um conhecimento profundo de fisiologia e periodização para otimizar seu desempenho e evitar lesões. O Pacemaker surge para preencher essa lacuna, democratizando o acesso a um coaching de corrida inteligente e adaptativo.
+
+## 2. Quem é o Usuário Ideal?
+
+Nosso usuário ideal é o **corredor engajado e ambicioso**, que:
+
+*   Busca **evoluir consistentemente** em suas corridas, seja para melhorar o pace, aumentar a distância ou completar uma maratona.
+*   Valoriza **dados e insights** sobre sua performance, mas não tem tempo ou conhecimento para analisá-los profundamente.
+*   Deseja um **plano de treino flexível e adaptativo**, que se ajuste à sua rotina, nível de fadiga e progresso real.
+*   Procura um **feedback personalizado e inteligente**, que vá além dos números e o ajude a entender o "porquê" de cada treino e recomendação.
+*   Utiliza plataformas como Strava e Google Calendar, buscando uma **integração fluida** de seu ecossistema de corrida.
+
+## 3. O Que Diferencia o Pacemaker?
+
+O Pacemaker se destaca por sua abordagem **centrada na inteligência artificial e na adaptação contínua**, oferecendo uma experiência de coaching que é:
+
+*   **Coach IA Adaptativo:** Não é um plano estático, mas um treinador virtual que aprende com o atleta, ajustando o planejamento em tempo real com base em seu desempenho, fadiga e contexto de 8 semanas.
+*   **Context Engine v1:** Analisa tendências de longo prazo (volume, pace, aderência, fadiga) para fornecer insights profundos e proativos, transformando dados em conhecimento acionável.
+*   **Planejamento Assistido:** O Coach não apenas sugere, mas permite que o atleta confirme e envie planos diretamente para o calendário, eliminando a fricção entre recomendação e execução.
+*   **Experiência Multi-dispositivo:** Sincronização perfeita entre PC e celular, garantindo que o histórico de conversas e o planejamento estejam sempre acessíveis, onde quer que o atleta esteja.
+*   **Foco na Prevenção e Otimização:** Identifica riscos de overtraining e oportunidades de progressão, ajudando o atleta a treinar de forma mais inteligente e segura.
+
+## 4. O Que NÃO é o Pacemaker?
+
+É importante definir o que o Pacemaker **não é** para manter o foco e a clareza de sua proposta de valor:
+
+*   **Não é um substituto para um treinador humano:** Embora ofereça coaching avançado, não substitui a interação humana para casos complexos, lesões graves ou acompanhamento psicológico.
+*   **Não é uma rede social de corrida:** Embora integre com Strava, seu foco principal não é a interação social ou a gamificação, mas sim o coaching personalizado.
+*   **Não é um aplicativo de registro de treinos genérico:** Vai muito além de apenas registrar atividades, oferecendo análise, planejamento e feedback inteligente.
+*   **Não é um dispositivo de GPS ou monitor cardíaco:** Integra-se com dados de dispositivos, mas não os substitui.
+
+## 5. Visão v1.0: Lançamento Beta (5 Usuários Reais)
+
+A v1.0 do Pacemaker marca o lançamento beta para um grupo seleto de 5 usuários reais. O objetivo é validar a experiência completa do produto em um ambiente controlado, coletando feedback valioso para refinar as funcionalidades e a usabilidade. Nesta versão, o Coach IA ganha memória de contexto de longo prazo (`Coach Memory`) e o planejamento semanal se integra bidirecionalmente com o Google Calendar (`Calendar Sync`), tornando o Pacemaker uma ferramenta ainda mais poderosa e integrada à rotina do atleta.
+
+## 6. Visão v2.0: Health Hub
+
+A v2.0 do Pacemaker posiciona o produto como um **Health Hub** completo para o corredor. O sistema se tornará um integrador de dados de saúde e performance, capaz de:
+
+*   **Integração com Wearables:** Conectar-se diretamente com plataformas como Garmin, Samsung Health e Apple Health para coletar dados abrangentes.
+*   **Readiness Inteligente:** Desenvolver um sistema avançado de prontidão para o treino, analisando dados de sono, variabilidade da frequência cardíaca (VFC), estresse e recuperação para otimizar o planejamento.
+*   **Coaching Holístico:** Oferecer recomendações que consideram não apenas o treino, mas o bem-estar geral do atleta, prevenindo lesões e maximizando o desempenho de forma sustentável.
+
+## 7. Missão
+
+**Capacitar cada corredor a atingir seu potencial máximo, oferecendo um coaching de corrida inteligente, adaptativo e acessível, que transforma dados em performance e motivação.**
+
+## 8. Proposta de Valor
+
+O Pacemaker oferece um **coaching de corrida personalizado e dinâmico, impulsionado por IA**, que se adapta à sua evolução e rotina. Receba **insights acionáveis, planeje seus treinos com facilidade e alcance suas metas de forma mais inteligente e segura**, tudo em uma experiência integrada e multi-dispositivo. Deixe o Pacemaker ser seu parceiro na jornada para a sua melhor corrida.

@@ -1,0 +1,89 @@
+# Pacemaker: Seu Coach de Corrida com IA
+
+![Pacemaker Logo](https://via.placeholder.com/150x50?text=Pacemaker+Logo) <!-- Placeholder para o logo -->
+
+O Pacemaker é um aplicativo inovador de coaching de corrida impulsionado por Inteligência Artificial, projetado para personalizar seus treinos e guiá-lo rumo às suas metas. Com uma abordagem adaptativa e baseada em dados, o Pacemaker atua como seu parceiro de treino, oferecendo insights e planos que evoluem com você.
+
+## Sobre o Projeto
+
+Desenvolvido com o objetivo de democratizar o acesso a um coaching de alta qualidade, o Pacemaker integra tecnologias de ponta para oferecer uma experiência de usuário fluida e eficaz. A versão atual, v0.8.2, foca na sincronização de dados e no aprimoramento do contexto do coach, preparando o terreno para futuras expansões e uma experiência de usuário ainda mais rica.
+
+## Funcionalidades Atuais (v0.8.2)
+
+A versão 0.8.2 do Pacemaker incorpora um conjunto robusto de funcionalidades, visando aprimorar a interação com o coach de IA e a persistência dos dados do usuário:
+
+*   **Login Google:** Autenticação simplificada e segura através da sua conta Google.
+*   **Multi-device:** Acesso contínuo e sincronizado aos seus dados e conversas em diferentes dispositivos.
+*   **Integração Strava:** Conecte-se ao Strava para importar seus treinos e permitir que o Coach IA analise seu desempenho real.
+*   **Coach IA:** Um treinador inteligente que programa seus treinos e oferece feedback personalizado.
+*   **Planner:** Uma ferramenta visual para organizar e acompanhar seu calendário de treinos.
+*   **Race IQ:** Análises e métricas para otimizar sua performance em corridas.
+*   **Firebase Sync:** Sincronização de dados em tempo real e persistência offline através do Firebase Firestore.
+*   **Gemini Coach:** Utilização da API Gemini para potencializar as capacidades de conversação e análise do Coach IA.
+*   **Cloud Sync da Gemini Key:** Gerenciamento seguro e sincronizado da chave de API Gemini na nuvem.
+*   **Coach History Sync:** Persistência e sincronização do histórico de conversas com o Coach IA, garantindo contexto contínuo.
+*   **Context Engine v1 (Em Andamento):** Uma evolução crucial para o Coach IA, permitindo a análise de tendências de longo prazo para um planejamento mais inteligente:
+    *   Tendência de volume (8 semanas)
+    *   Tendência de pace
+    *   Tendência de aderência ao plano
+    *   Tendência de fadiga
+    *   Tendência de longão
+    *   **Objetivo:** O Coach IA passa a olhar a **evolução** do corredor, e não apenas o momento presente.
+*   **Weekly Reports (Em Andamento):** Geração automática de relatórios semanais para fornecer um resumo claro do progresso, acertos, riscos e próximos passos.
+
+## Arquitetura de Alto Nível (v0.8.2)
+
+O Pacemaker v0.8.2 é construído sobre uma base de tecnologias web modernas, com foco em simplicidade e desempenho para a experiência mobile:
+
+*   **Frontend:** HTML, CSS (com variáveis e estilos inspirados em Tailwind CSS) e JavaScript Vanilla.
+*   **Backend/Dados:** Firebase (Authentication para login, Firestore para banco de dados NoSQL em tempo real).
+*   **Inteligência Artificial:** Integração com a API Gemini para o motor do Coach IA.
+*   **Estrutura:** Atualmente, o projeto é mantido em um único arquivo HTML/JavaScript, o que facilita o desenvolvimento rápido, mas está planejado para modularização futura.
+
+## Roadmap Oficial
+
+O futuro do Pacemaker é ambicioso, com um plano claro para evoluir a plataforma e a experiência do usuário:
+
+### v0.8.5 — Desktop Experience + Coach Assisted Planning
+
+*   **Objetivo:** Transformar o Pacemaker em uma experiência desktop de verdade, otimizando a interação para telas maiores e integrando o Coach diretamente no fluxo de planejamento.
+*   **Fazer:** Implementar Sidebar, layout responsivo, Coach Workspace (painel contextual), e Coach Assisted Planning (confirmação de plano com 1 clique).
+
+### v0.9.0 — Onboarding Experience
+
+*   **Objetivo:** Simplificar e otimizar a entrada de novos usuários, reduzindo a fricção e acelerando a configuração inicial.
+*   **Fazer:** Implementar Strava One Click Login, Google Login, e um fluxo de setup inicial guiado e simplificado.
+
+### v0.9.5 — React Foundation + React Migration
+
+*   **Objetivo:** Preparar a base técnica e iniciar a migração gradual para uma arquitetura React moderna, visando performance, manutenibilidade e escalabilidade.
+*   **Fazer:** Modularização do código Vanilla JS existente, adoção de TypeScript e Zustand, e reescrita incremental dos componentes da UI para React.
+
+### v1.0 Beta — Public Release (5 Usuários Reais)
+
+*   **Objetivo:** Lançamento beta do Pacemaker para um grupo seleto de usuários reais, coletando feedback valioso para refinar o produto.
+*   **Fazer:** Implementar Coach Memory (memória de contexto de longo prazo para o Coach) e Calendar Sync (sincronização bidirecional com Google Calendar).
+
+### v1.1 — Work-Life Engine
+
+*   **Objetivo:** Integrar o Pacemaker de forma mais profunda à vida do atleta, considerando fatores como trabalho, compromissos e disponibilidade.
+*   **Fazer:** Implementar escalas de trabalho, gerenciamento de disponibilidade, e definição de objetivos estruturados que o Coach possa usar para adaptar o plano.
+
+### v2.0 — Health Hub
+
+*   **Objetivo:** Transformar o Pacemaker em um hub central de saúde e performance, integrando dados de diversas fontes para um coaching holístico.
+*   **Fazer:** Integração com Garmin, Samsung Health, Apple Health, e desenvolvimento de um sistema de Readiness inteligente (prontidão para o treino) baseado em múltiplos fatores de saúde.
+
+## Changelog Resumido
+
+*   **v0.8.2 (Atual):** Foco em Context & Sync. Implementação de Firebase Sync, Gemini Coach, Cloud Sync da Gemini Key, Coach History Sync. Início do desenvolvimento do Context Engine v1 e Weekly Reports. Remoção da dependência do OpenAI.
+*   **Versões Anteriores:** Implementação inicial de Login Google, Multi-device, Integração Strava, Coach IA básico, Planner e Race IQ.
+
+## Contribuição
+
+Atualmente, o projeto está em fase de desenvolvimento interno. Informações sobre como contribuir serão adicionadas em futuras versões.
+
+## Licença
+
+[Informações sobre a licença do projeto serão adicionadas aqui.]
+]
