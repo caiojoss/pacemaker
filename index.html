@@ -91,13 +91,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .desktop-right-panel{ display:none }
 
 @media(min-width:900px){
-  html,body{overflow:auto}
-  #app{max-width:100%;flex-direction:row;height:100vh;overflow:hidden}
+  /* Layout raiz */
+  html{ height:100%; overflow:hidden }
+  body{ height:100%; overflow:hidden }
+  #app{ max-width:100%; flex-direction:row; height:100%; overflow:hidden }
 
   /* Sidebar esquerda */
   .desktop-sidebar{
     width:220px;flex-shrink:0;background:var(--surface);border-right:0.5px solid var(--border);
-    display:flex;flex-direction:column;padding:0;height:100vh;position:sticky;top:0;
+    display:flex;flex-direction:column;padding:0;height:100%;position:sticky;top:0;
     overflow-y:auto;z-index:50;
   }
   .desktop-sidebar::-webkit-scrollbar{display:none}
@@ -159,13 +161,27 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   .app-header{display:none!important}
   /* Mostrar elementos desktop */
   .desktop-sidebar{display:flex!important}
-  .desktop-main{display:flex!important;flex:1;overflow:hidden}
+  .desktop-main{display:flex!important;flex:1;min-width:0;overflow:hidden;height:100%}
   .desktop-right-panel{display:flex!important;flex-direction:column;width:280px;flex-shrink:0;border-left:.5px solid var(--border);background:var(--surface);overflow-y:auto}
 
-  /* Scroll area no desktop: padding sem bottom-nav */
-  .scroll-area{padding:20px 24px 24px!important;-webkit-overflow-scrolling:auto!important;min-height:100%;overflow:visible!important}
-  /* desktop-content handles the scroll */
-  .desktop-content{height:100vh}
+  /* SCROLL DESKTOP: cadeia correta de contenção */
+  /* html/body/app(height:100%) > desktop-main(flex:1, height:100%) > desktop-content(flex:1, overflow-y:auto) */
+  .desktop-content{
+    flex:1;
+    min-width:0;
+    height:100%;
+    overflow-y:auto!important;
+    overflow-x:hidden;
+  }
+  /* scroll-area: layout transparente dentro do desktop-content */
+  .scroll-area{
+    padding:20px 24px 40px!important;
+    overflow:visible!important;
+    height:auto!important;
+    max-height:none!important;
+    -webkit-overflow-scrolling:unset!important;
+  }
+  .section{ overflow:visible!important; max-height:none!important; }
 
   /* Seção Planner grid maior no desktop */
   .cal-grid{grid-template-columns:repeat(7,1fr)!important}
@@ -1600,17 +1616,18 @@ function kmTotal() {
   return state.workouts.filter(w=>isCompleted(w)).reduce((a,w)=>a+(w.dist||0),0);
 }
 
-// Plan adherence: planned vs completed this week
+// Plan adherence: completed / weekGoal (not vs remaining planned)
 function planAdherence() {
   const ws = weekStart(today());
   const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
   const weStr = we.toISOString().split('T')[0];
-  const planned = state.workouts.filter(w=>w.date>=ws&&w.date<=weStr&&(isPlanned(w)||isCompleted(w)));
-  if(planned.length===0) return null;
-  const plannedKm = planned.reduce((a,w)=>a+(w.dist||0),0);
+  const wg = state.config.weekGoal || 52;
+  if(wg === 0) return null;
+  // Check if there's any planned or completed workout this week
+  const hasActivity = state.workouts.some(w => w.date>=ws && w.date<=weStr && (isPlanned(w)||isCompleted(w)));
+  if(!hasActivity) return null;
   const completedKm = kmCompleted(ws, weStr);
-  if(plannedKm===0) return null;
-  return Math.min(100, Math.round(completedKm/plannedKm*100));
+  return Math.min(100, Math.round(completedKm / wg * 100));
 }
 
 // Adaptive rebalance: after completing a workout, redistribute remaining planned km
@@ -1769,6 +1786,8 @@ function renderWeeklyReport() {
 }
 
 function renderDashboardBase() {
+  // Weekly Report card (existia antes do v0.8.5 — restaurado)
+  renderWeeklyReport();
 
   // Countdown
   const rc = state.config.raceDate;
@@ -2588,10 +2607,12 @@ function get8WeekStats() {
     const runs = completed.filter(w => ['z2', 'long', 'interval', 'progressivo', 'tempo'].includes(w.type) && w.pace);
     const avgPace = runs.length > 0 ? runs.reduce((a, w) => a + paceToSec(w.pace), 0) / runs.length : 0;
 
+    const wg = state.config.weekGoal || 52;
+
     weeks.push({
       label: `${ws.getDate()}/${ws.getMonth()+1}`,
       km: parseFloat(km.toFixed(1)),
-      adherence: plannedKm > 0 ? Math.min(100, Math.round((km / plannedKm) * 100)) : 0,
+      adherence: wg > 0 ? Math.min(100, Math.round((km / wg) * 100)) : 0,
       fatigue: parseFloat(avgFatigue.toFixed(1)),
       pace: Math.round(avgPace),
       longDist: longRun ? longRun.dist : 0
