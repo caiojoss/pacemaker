@@ -260,8 +260,7 @@ Ajuste Dinâmico: O plano de treino se recalculará automaticamente em resposta 
 Changelog Resumido
 
 •
-v0.8.2 (Atual): Foco em Context & Sync. Implementação de Firebase Sync, Gemini Coach, Cloud Sync da Gemini Key, Coach History Sync. Início do desenvolvimento do Context Engine v1 e Weekly Reports. Remoção da dependência do OpenAI.
-
+v0.8.5 (Atual): feat(v0.8.5): desktop experience foundation
 •
 Versões Anteriores: Implementação inicial de Login Google, Multi-device, Integração Strava, Coach IA básico, Planner e Race IQ.
 
