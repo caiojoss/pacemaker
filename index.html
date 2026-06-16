@@ -94,7 +94,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   /* Layout raiz */
   html{ height:100%; overflow:hidden }
   body{ height:100%; overflow:hidden }
-  #app{ max-width:100%; flex-direction:row; height:100%; overflow:hidden }
+  #app{ max-width:100%; flex-direction:row; height:100%; overflow:hidden; margin:0; }
 
   /* Sidebar esquerda */
   .desktop-sidebar{
@@ -155,19 +155,21 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   .bottom-nav{ display:none!important }
   .app-header{ display:none!important }
 
-  /* Reativar elementos desktop */
-  .desktop-sidebar{display:flex!important}
-  .desktop-right-panel{border-left:.5px solid var(--border);background:var(--surface)}
+  /* Reativar sidebar */
+  .desktop-sidebar{ display:flex!important }
 
-  /* ── SCROLL CHAIN (definitivo) ──
-     #app(flex-row, height:100%) 
-       > .desktop-main(grid, height:100%)
-           > .desktop-content(overflow-y:auto)   ← SCROLLA
-           > .desktop-right-panel(overflow-y:auto) ← SCROLLA
+  /* ── LAYOUT PRINCIPAL ──
+     #app (flex-row, height:100%)
+       └ .desktop-sidebar  (220px, fixo)
+       └ .desktop-main     (flex:1, grid 2 colunas)
+             └ .desktop-content      (scrolla)
+             └ .desktop-right-panel  (scrolla independente)
   */
   .desktop-main{
     display:grid!important;
     grid-template-columns:1fr 280px;
+    flex:1;
+    min-width:0;
     height:100%!important;
     min-height:0;
     overflow:hidden;
@@ -175,20 +177,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   .desktop-main.panel-hidden{
     grid-template-columns:1fr!important;
   }
-  /* display:flex APÓS panel-off — mas panel-off tem maior especificidade (2 classes) */
-  .desktop-right-panel{
-    display:flex;
-    flex-direction:column;
-    height:100%!important;
-    min-height:0;
-    overflow-y:auto!important;
-  }
-  /* panel-off VEM DEPOIS e tem 2 classes = maior especificidade — SEMPRE vence */
-  .desktop-right-panel.panel-off{
-    display:none!important;
-  }
   .desktop-content{
     display:block!important;
+    width:100%;
+    min-width:0;
     height:100%!important;
     min-height:0;
     overflow-y:scroll!important;
@@ -198,20 +190,31 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   .desktop-content::-webkit-scrollbar-track{background:transparent}
   .desktop-content::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
-  /* scroll-area: apenas padding, sem scroll próprio */
-  .scroll-area{
+  /* Right panel: visível por padrão, oculto com .panel-off */
+  .desktop-right-panel{
     display:flex!important;
-    flex-direction:column!important;
-    flex:1!important;
+    flex-direction:column;
+    height:100%!important;
+    min-height:0;
+    overflow-y:auto;
+    border-left:.5px solid var(--border);
+    background:var(--surface);
+  }
+  /* panel-off: 2 classes = especificidade maior, vem depois = sempre ganha */
+  .desktop-right-panel.panel-off{
+    display:none!important;
+  }
+
+  /* scroll-area: sem scroll próprio */
+  .scroll-area{
+    display:block!important;
     padding:20px 24px 60px!important;
-    overflow-y:auto!important;
-    overflow-x:hidden!important;
+    overflow:visible!important;
     height:auto!important;
     max-height:none!important;
-    min-height:unset!important;
-    -webkit-overflow-scrolling:touch!important;
+    -webkit-overflow-scrolling:unset!important;
   }
-  .section{ overflow:visible!important; max-height:none!important; height:auto!important; flex:1; display:flex; flex-direction:column; }
+  .section{ overflow:visible!important; max-height:none!important; height:auto!important; }
 
   /* Seção Planner grid maior no desktop */
   .cal-grid{grid-template-columns:repeat(7,1fr)!important}
@@ -4880,11 +4883,8 @@ function renderWeeklyReports() {
     </div>`;
 
   el.innerHTML = `
-    <div style="padding:20px 0 8px;margin-bottom:16px;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div>
-        <h1 style="font-size:20px;font-weight:800;margin-bottom:4px">Weekly Reports</h1>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Análise das últimas 8 semanas de treino</div>
-      </div>
+    <div style="padding:0 0 16px;margin-bottom:16px;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Análise das últimas 8 semanas de treino</div>
       <span class="badge badge-accent">v0.8.5</span>
     </div>
     ${trendHtml}
@@ -5089,39 +5089,9 @@ function renderDashboard() {
 }
 
 function applyDashboardDesktopGrid() {
-  // Use CSS flexbox with order instead of DOM manipulation — safer, no regression risk
-  const secDash = document.getElementById('sec-dashboard');
-  if(!secDash || secDash.dataset.desktopGrid==='1') return;
-  secDash.dataset.desktopGrid = '1';
-
-  // Give each known card an order and width via inline style (desktop only)
-  const styleId = 'db-desktop-style';
-  if(document.getElementById(styleId)) return;
-  const s = document.createElement('style');
-  s.id = styleId;
-  s.textContent = `
-    @media(min-width:900px){
-      #sec-dashboard .scroll-area{
-        display:flex;flex-wrap:wrap;gap:16px;align-items:start;
-      }
-      #sec-dashboard .section-title{width:100%;order:-10}
-      /* Left column (~55%) */
-      #db-weekly-report,
-      #sec-dashboard #db-next-card { width:calc(55% - 8px); }
-      /* Right column (~45%) */
-      #sec-dashboard .grid3,
-      #db-exec-card,
-      #db-month-bar, #db-sub4-bar { width:calc(45% - 8px); }
-      /* Progress cards wrapper */
-      #db-exec-card { order:2; }
-      #sec-dashboard #db-next-card { order:3; }
-      #db-weekly-report { order:4; }
-      /* Recent workouts: always full width at bottom */
-      #sec-dashboard [style*="Treinos recentes"],
-      #db-recent-list { width:100% !important; order:99; }
-    }
-  `;
-  document.head.appendChild(s);
+  // v0.8.5: desktop grid desativado — layout simples é mais estável
+  // O scroll-area com padding já funciona bem no desktop
+  return;
 }
 
 // ==================== INIT ====================
