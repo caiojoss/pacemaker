@@ -60,6 +60,10 @@ onAuthStateChanged(fbAuth, user => {
   }
   if(typeof renderAuthCard === 'function') renderAuthCard();
   if(typeof renderSyncIndicator === 'function') renderSyncIndicator();
+  // v0.9.0: check onboarding after auth state resolves (cloud data loads first)
+  if(user && typeof window._pmCheckOnboardingAfterAuth === 'function') {
+    window._pmCheckOnboardingAfterAuth();
+  }
 });
 </script>
 <style>
@@ -1416,6 +1420,7 @@ let state = {
     updatedAt: ''
   },
   user: null,  // { uid, displayName, email, photoURL } — set by Firebase auth listener
+  onboardingDone: false, // v0.9.0: tracks if user completed onboarding flow
   stravaConfig: {
     clientId:  '',    // safe to sync — public value
     connected: false, // whether Strava is linked
@@ -4442,7 +4447,8 @@ function buildCloudPayload() {
     athleteProfile: state.athleteProfile,
     stravaConfig: state.stravaConfig,  // clientId + connected flag + athlete meta (no tokens)
     geminiKeyEncrypted: rawKey ? geminiKeyToCloud(rawKey) : null,
-    chatHistory: state.chatHistory // Sync chat history across devices
+    chatHistory: state.chatHistory, // Sync chat history across devices
+    onboardingDone: state.onboardingDone || false // v0.9.0
   };
 }
 
@@ -4474,6 +4480,7 @@ async function downloadFromCloud() {
       if(data.workouts)       state.workouts       = data.workouts;
       if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
       if(data.chatHistory)    state.chatHistory    = data.chatHistory;
+      if(typeof data.onboardingDone === 'boolean') state.onboardingDone = data.onboardingDone; // v0.9.0
       // Restore Strava config so Client ID appears on new devices
       if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
       // Also restore Client ID to UID-scoped localStorage so Strava functions find it
@@ -5122,6 +5129,683 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchstart',e=>{drawerS
 drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
   if(e.changedTouches[0].clientY - drawerSwipeY > 60) closeDayDrawer();
 },{passive:true});
+</script>
+<!-- ══════════════════════════════════════════════════════════
+     v0.9.0 — ONBOARDING + FIRST PLAN EXPERIENCE
+     ══════════════════════════════════════════════════════════ -->
+<style>
+/* ── Onboarding overlay ─────────────────────────────────── */
+#screen-onboarding, #screen-first-plan {
+  position:fixed;inset:0;z-index:9000;
+  background:var(--bg);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+#screen-onboarding.hidden, #screen-first-plan.hidden { display:none!important; }
+
+/* Progress bar */
+.ob-progress-wrap {
+  height:3px;background:var(--surface2);flex-shrink:0;
+}
+.ob-progress-bar {
+  height:100%;background:var(--accent);border-radius:2px;
+  transition:width .35s ease;
+}
+
+/* Step container */
+.ob-steps { flex:1;overflow:hidden;position:relative; }
+.ob-step {
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:32px 28px;
+  opacity:0;pointer-events:none;transform:translateX(40px);
+  transition:opacity .28s ease, transform .28s ease;
+  overflow-y:auto;
+}
+.ob-step.active {
+  opacity:1;pointer-events:auto;transform:translateX(0);
+}
+.ob-step.exit {
+  opacity:0;transform:translateX(-40px);
+}
+
+/* Step content */
+.ob-eyebrow {
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:10px;
+}
+.ob-title {
+  font-family:var(--display);font-size:26px;font-weight:800;
+  line-height:1.2;margin-bottom:8px;
+}
+.ob-sub {
+  font-family:var(--mono);font-size:12px;color:var(--text3);
+  margin-bottom:28px;line-height:1.6;
+}
+.ob-field { margin-bottom:16px; }
+.ob-label {
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text3);margin-bottom:6px;
+}
+.ob-input {
+  width:100%;padding:13px 14px;
+  background:var(--surface2);border:1px solid var(--border2);
+  border-radius:var(--r-sm);color:var(--text);
+  font-family:var(--mono);font-size:15px;
+  transition:border-color .15s;
+}
+.ob-input:focus { outline:none;border-color:var(--accent); }
+.ob-input::placeholder { color:var(--text3); }
+
+/* Option chips */
+.ob-chips { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px; }
+.ob-chip {
+  padding:10px 16px;border-radius:20px;
+  border:1px solid var(--border2);background:var(--surface2);
+  font-family:var(--mono);font-size:12px;color:var(--text2);
+  cursor:pointer;transition:all .15s;
+}
+.ob-chip:hover { border-color:var(--accent);color:var(--accent); }
+.ob-chip.sel {
+  border-color:var(--accent);background:var(--accent-dim);
+  color:var(--accent);font-weight:700;
+}
+
+/* Days chips (numbers) */
+.ob-day-chips { display:flex;gap:6px;flex-wrap:wrap; }
+.ob-day-chip {
+  width:44px;height:44px;border-radius:50%;
+  border:1px solid var(--border2);background:var(--surface2);
+  font-family:var(--mono);font-size:13px;color:var(--text2);
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
+}
+.ob-day-chip.sel {
+  border-color:var(--accent);background:var(--accent-dim);color:var(--accent);font-weight:700;
+}
+
+/* Footer */
+.ob-footer {
+  padding:20px 28px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  flex-shrink:0;display:flex;flex-direction:column;gap:10px;
+}
+.ob-btn-primary {
+  width:100%;padding:16px;border-radius:var(--r);
+  background:var(--accent);color:#0a0a0f;
+  font-family:var(--display);font-size:14px;font-weight:800;
+  letter-spacing:.06em;border:none;cursor:pointer;
+  transition:opacity .15s;
+}
+.ob-btn-primary:hover { opacity:.88; }
+.ob-btn-primary:disabled { opacity:.4;cursor:not-allowed; }
+.ob-btn-back {
+  background:none;border:none;
+  font-family:var(--mono);font-size:12px;color:var(--text3);
+  cursor:pointer;padding:6px;
+}
+.ob-btn-back:hover { color:var(--text2); }
+.ob-step-counter {
+  font-family:var(--mono);font-size:10px;color:var(--text3);
+  text-align:center;margin-top:4px;
+}
+
+/* ── First Plan screen ────────────────────────────────────── */
+#screen-first-plan {
+  align-items:center;justify-content:center;
+  padding:32px 28px;text-align:center;
+  background:radial-gradient(ellipse at 50% 0%, rgba(232,245,90,.08) 0%, var(--bg) 70%);
+}
+.fp-icon {
+  font-size:56px;margin-bottom:24px;
+  animation:fp-pop .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes fp-pop {
+  from{transform:scale(0);opacity:0}
+  to{transform:scale(1);opacity:1}
+}
+.fp-title {
+  font-family:var(--display);font-size:24px;font-weight:800;
+  margin-bottom:10px;
+}
+.fp-sub {
+  font-family:var(--mono);font-size:12px;color:var(--text3);
+  line-height:1.7;margin-bottom:32px;
+}
+.fp-plan-preview {
+  width:100%;max-width:420px;
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:var(--r);padding:20px;margin-bottom:28px;text-align:left;
+}
+.fp-plan-row {
+  display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:.5px solid var(--border);
+  font-family:var(--mono);font-size:12px;
+}
+.fp-plan-row:last-child { border-bottom:none; }
+.fp-plan-key { color:var(--text3); }
+.fp-plan-val { color:var(--accent);font-weight:700; }
+
+/* ── Desktop onboarding ─────────────────────────────────── */
+@media(min-width:900px){
+  .ob-step { max-width:480px;margin:0 auto;padding:40px 0; }
+  .ob-footer { max-width:480px;margin:0 auto;padding-left:0;padding-right:0; }
+  #screen-first-plan { gap:0; }
+}
+</style>
+
+<!-- ── ONBOARDING SCREEN ──────────────────────────────────── -->
+<div id="screen-onboarding" class="hidden">
+  <div class="ob-progress-wrap">
+    <div class="ob-progress-bar" id="ob-progress" style="width:0%"></div>
+  </div>
+
+  <div class="ob-steps">
+    <!-- STEP 0: Welcome -->
+    <div class="ob-step active" data-step="0">
+      <div class="ob-eyebrow">Pacemaker v0.9</div>
+      <div class="ob-title">Pronto para<br>correr mais<br>inteligente?</div>
+      <div class="ob-sub">Em 2 minutos montamos seu plano personalizado. Sem complicação.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--r-sm)">
+          <span style="font-size:20px">🎯</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:2px">Plano personalizado</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Baseado no seu perfil e objetivo</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--r-sm)">
+          <span style="font-size:20px">🤖</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:2px">Coach AI incluído</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Orientação adaptativa toda semana</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--r-sm)">
+          <span style="font-size:20px">📊</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:2px">Sincronizado em todos os dispositivos</div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Via Google Account — sempre salvo</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 1: Profile -->
+    <div class="ob-step" data-step="1">
+      <div class="ob-eyebrow">Passo 1 de 5</div>
+      <div class="ob-title">Qual é o seu perfil?</div>
+      <div class="ob-sub">Usamos isso para calibrar seu plano com segurança.</div>
+      <div class="ob-field">
+        <div class="ob-label">Como quer ser chamado?</div>
+        <input class="ob-input" id="ob-name" type="text" placeholder="Seu nome" autocomplete="given-name"/>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="ob-field">
+          <div class="ob-label">Peso (kg)</div>
+          <input class="ob-input" id="ob-weight" type="number" placeholder="70" min="40" max="200"/>
+        </div>
+        <div class="ob-field">
+          <div class="ob-label">Altura (cm)</div>
+          <input class="ob-input" id="ob-height" type="number" placeholder="175" min="140" max="220"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 2: Experience -->
+    <div class="ob-step" data-step="2">
+      <div class="ob-eyebrow">Passo 2 de 5</div>
+      <div class="ob-title">Qual é sua experiência?</div>
+      <div class="ob-sub">Seja honesto — isso define seu volume inicial.</div>
+      <div class="ob-field">
+        <div class="ob-label">Nível atual</div>
+        <div class="ob-chips" id="ob-level-chips">
+          <div class="ob-chip" data-val="beginner" onclick="selectChip('ob-level-chips',this)">🌱 Iniciante<br><span style="font-size:10px;color:var(--text3)">Menos de 6 meses</span></div>
+          <div class="ob-chip" data-val="intermediate" onclick="selectChip('ob-level-chips',this)">🏃 Intermediário<br><span style="font-size:10px;color:var(--text3)">6 meses – 2 anos</span></div>
+          <div class="ob-chip" data-val="advanced" onclick="selectChip('ob-level-chips',this)">⚡ Avançado<br><span style="font-size:10px;color:var(--text3)">Mais de 2 anos</span></div>
+        </div>
+      </div>
+      <div class="ob-field" id="ob-besttime-field" style="display:none">
+        <div class="ob-label">Melhor tempo em prova (opcional)</div>
+        <input class="ob-input" id="ob-besttime" type="text" placeholder="Ex: 2h38 (meia) ou 5h10 (maratona)"/>
+      </div>
+    </div>
+
+    <!-- STEP 3: Goal -->
+    <div class="ob-step" data-step="3">
+      <div class="ob-eyebrow">Passo 3 de 5</div>
+      <div class="ob-title">Qual é seu objetivo?</div>
+      <div class="ob-sub">Escolha a prova alvo principal.</div>
+      <div class="ob-field">
+        <div class="ob-label">Modalidade</div>
+        <div class="ob-chips" id="ob-race-chips">
+          <div class="ob-chip" data-val="5k" onclick="selectChip('ob-race-chips',this)">5k</div>
+          <div class="ob-chip" data-val="10k" onclick="selectChip('ob-race-chips',this)">10k</div>
+          <div class="ob-chip" data-val="half" onclick="selectChip('ob-race-chips',this)">Meia Maratona</div>
+          <div class="ob-chip sel" data-val="marathon" onclick="selectChip('ob-race-chips',this)">Maratona</div>
+        </div>
+      </div>
+      <div class="ob-field">
+        <div class="ob-label">Meta de tempo (opcional)</div>
+        <input class="ob-input" id="ob-targettime" type="text" placeholder="Ex: Sub 4h, Sub 2h, 5:30/km"/>
+      </div>
+      <div class="ob-field">
+        <div class="ob-label">Data da prova (opcional)</div>
+        <input class="ob-input" id="ob-racedate" type="date"/>
+      </div>
+    </div>
+
+    <!-- STEP 4: Availability -->
+    <div class="ob-step" data-step="4">
+      <div class="ob-eyebrow">Passo 4 de 5</div>
+      <div class="ob-title">Quanto você pode treinar?</div>
+      <div class="ob-sub">Seja realista — consistência bate intensidade.</div>
+      <div class="ob-field">
+        <div class="ob-label">Dias de corrida por semana</div>
+        <div class="ob-day-chips" id="ob-days-chips">
+          <div class="ob-day-chip" data-val="2" onclick="selectDayChip(this)">2</div>
+          <div class="ob-day-chip" data-val="3" onclick="selectDayChip(this)">3</div>
+          <div class="ob-day-chip sel" data-val="4" onclick="selectDayChip(this)">4</div>
+          <div class="ob-day-chip" data-val="5" onclick="selectDayChip(this)">5</div>
+          <div class="ob-day-chip" data-val="6" onclick="selectDayChip(this)">6</div>
+        </div>
+      </div>
+      <div class="ob-field" style="margin-top:20px">
+        <div class="ob-label">Você trabalha em escala?</div>
+        <div class="ob-chips" id="ob-scale-chips">
+          <div class="ob-chip" data-val="2x2" onclick="selectChip('ob-scale-chips',this)">2x2 (2 dias on/off)</div>
+          <div class="ob-chip" data-val="5x2" onclick="selectChip('ob-scale-chips',this)">Semana comercial</div>
+          <div class="ob-chip" data-val="other" onclick="selectChip('ob-scale-chips',this)">Outra</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5: Summary -->
+    <div class="ob-step" data-step="5">
+      <div class="ob-eyebrow">Passo 5 de 5</div>
+      <div class="ob-title">Tudo certo.<br>Vamos montar<br>seu plano.</div>
+      <div class="ob-sub">Confirme seus dados antes de gerar.</div>
+      <div id="ob-summary" style="background:var(--surface2);border-radius:var(--r);padding:16px;margin-bottom:8px;font-family:var(--mono);font-size:12px;line-height:2"></div>
+    </div>
+  </div>
+
+  <div class="ob-footer">
+    <button class="ob-btn-primary" id="ob-btn-next" onclick="obNext()">Começar →</button>
+    <button class="ob-btn-back" id="ob-btn-back" style="display:none" onclick="obBack()">← Voltar</button>
+    <div class="ob-step-counter" id="ob-step-counter"></div>
+  </div>
+</div>
+
+<!-- ── FIRST PLAN SCREEN ──────────────────────────────────── -->
+<div id="screen-first-plan" class="hidden">
+  <div class="fp-icon">🏃</div>
+  <div class="fp-title">Seu plano chegou.</div>
+  <div class="fp-sub" id="fp-sub">Seu Coach preparou a primeira semana.<br>Hora de começar.</div>
+  <div class="fp-plan-preview" id="fp-plan-preview"></div>
+  <button class="ob-btn-primary" style="max-width:420px;width:100%" onclick="enterDashboard()">
+    Ver meu Dashboard →
+  </button>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// v0.9.0 — ONBOARDING ENGINE
+// ══════════════════════════════════════════════════════════
+
+const OB_TOTAL_STEPS = 6; // steps 0-5
+let _obStep = 0;
+const _obData = {
+  name:'', weight:0, height:0,
+  level:'intermediate', bestTime:'',
+  raceType:'marathon', targetTime:'', raceDate:'',
+  daysPerWeek:4, scale:'2x2'
+};
+
+// ── Entry point ───────────────────────────────────────────
+function checkOnboarding() {
+  // Only show if logged in AND onboarding not done
+  if(!state.user) return;
+  if(state.onboardingDone) return;
+  // Pre-fill name from Google account
+  if(state.user.displayName && !_obData.name) {
+    _obData.name = state.user.displayName.split(' ')[0];
+    const nameInput = document.getElementById('ob-name');
+    if(nameInput) nameInput.value = _obData.name;
+  }
+  showOnboarding();
+}
+
+function showOnboarding() {
+  document.getElementById('screen-onboarding').classList.remove('hidden');
+  _obStep = 0;
+  renderObStep(0);
+}
+
+function hideOnboarding() {
+  document.getElementById('screen-onboarding').classList.add('hidden');
+}
+
+// ── Step navigation ───────────────────────────────────────
+function renderObStep(step) {
+  // Progress bar
+  const pct = step === 0 ? 5 : Math.round((step / (OB_TOTAL_STEPS - 1)) * 100);
+  document.getElementById('ob-progress').style.width = pct + '%';
+
+  // Show/hide steps
+  document.querySelectorAll('.ob-step').forEach(el => {
+    const s = parseInt(el.dataset.step);
+    el.classList.remove('active','exit');
+    if(s === step) el.classList.add('active');
+    else if(s < step) el.classList.add('exit');
+  });
+
+  // Next button label
+  const nextBtn = document.getElementById('ob-btn-next');
+  const backBtn = document.getElementById('ob-btn-back');
+  const counter = document.getElementById('ob-step-counter');
+
+  if(step === 0) {
+    nextBtn.textContent = 'Começar →';
+    backBtn.style.display = 'none';
+    counter.textContent = '';
+  } else if(step === OB_TOTAL_STEPS - 1) {
+    nextBtn.textContent = '🚀 Gerar meu plano';
+    backBtn.style.display = 'block';
+    counter.textContent = `${step} de ${OB_TOTAL_STEPS - 1}`;
+    renderObSummary();
+  } else {
+    nextBtn.textContent = 'Continuar →';
+    backBtn.style.display = 'block';
+    counter.textContent = `${step} de ${OB_TOTAL_STEPS - 1}`;
+  }
+
+  // Show besttime field when not beginner
+  if(step === 2) {
+    const btField = document.getElementById('ob-besttime-field');
+    if(btField) btField.style.display = _obData.level !== 'beginner' ? 'block' : 'none';
+  }
+}
+
+function obNext() {
+  if(!validateObStep(_obStep)) return;
+  collectObStep(_obStep);
+
+  if(_obStep === OB_TOTAL_STEPS - 1) {
+    // Final step — save and generate
+    finishOnboarding();
+    return;
+  }
+  _obStep++;
+  renderObStep(_obStep);
+}
+
+function obBack() {
+  if(_obStep <= 0) return;
+  _obStep--;
+  renderObStep(_obStep);
+}
+
+function validateObStep(step) {
+  if(step === 1) {
+    const name = document.getElementById('ob-name').value.trim();
+    if(!name) { shakeEl('ob-name'); return false; }
+  }
+  return true;
+}
+
+function shakeEl(id) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.style.borderColor = 'var(--red)';
+  el.style.animation = 'none';
+  setTimeout(()=>{ el.style.borderColor=''; },1200);
+}
+
+function collectObStep(step) {
+  if(step === 1) {
+    _obData.name   = document.getElementById('ob-name').value.trim() || _obData.name;
+    _obData.weight = parseFloat(document.getElementById('ob-weight').value) || 70;
+    _obData.height = parseFloat(document.getElementById('ob-height').value) || 175;
+  }
+  if(step === 2) {
+    const lc = document.querySelector('#ob-level-chips .ob-chip.sel');
+    if(lc) _obData.level = lc.dataset.val;
+    _obData.bestTime = document.getElementById('ob-besttime').value.trim();
+  }
+  if(step === 3) {
+    const rc = document.querySelector('#ob-race-chips .ob-chip.sel');
+    if(rc) _obData.raceType = rc.dataset.val;
+    _obData.targetTime = document.getElementById('ob-targettime').value.trim();
+    _obData.raceDate   = document.getElementById('ob-racedate').value;
+  }
+  if(step === 4) {
+    const dc = document.querySelector('#ob-days-chips .ob-day-chip.sel');
+    if(dc) _obData.daysPerWeek = parseInt(dc.dataset.val);
+    const sc = document.querySelector('#ob-scale-chips .ob-chip.sel');
+    if(sc) _obData.scale = sc.dataset.val;
+  }
+}
+
+// ── Chip helpers ──────────────────────────────────────────
+function selectChip(groupId, el) {
+  document.querySelectorAll(`#${groupId} .ob-chip`).forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+  // Show besttime when level selected and not beginner
+  if(groupId === 'ob-level-chips') {
+    _obData.level = el.dataset.val;
+    const btField = document.getElementById('ob-besttime-field');
+    if(btField) btField.style.display = el.dataset.val !== 'beginner' ? 'block' : 'none';
+  }
+}
+
+function selectDayChip(el) {
+  document.querySelectorAll('#ob-days-chips .ob-day-chip').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+// ── Summary ───────────────────────────────────────────────
+function renderObSummary() {
+  // Collect all before showing summary
+  for(let i=1;i<=4;i++) collectObStep(i);
+
+  const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k'};
+  const levelLabels = {beginner:'Iniciante',intermediate:'Intermediário',advanced:'Avançado'};
+  const weekKm = calcWeekGoalFromProfile(_obData);
+
+  document.getElementById('ob-summary').innerHTML = `
+    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
+      <span style="color:var(--text3)">Nome</span><span style="color:var(--text);font-weight:700">${_obData.name}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
+      <span style="color:var(--text3)">Perfil</span><span>${_obData.weight}kg · ${_obData.height}cm · ${levelLabels[_obData.level]||'Intermediário'}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
+      <span style="color:var(--text3)">Objetivo</span><span style="color:var(--accent);font-weight:700">${raceLabels[_obData.raceType]||'Maratona'}${_obData.targetTime?' · '+_obData.targetTime:''}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
+      <span style="color:var(--text3)">Prova</span><span>${_obData.raceDate ? formatDate(_obData.raceDate) : 'A definir'}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between">
+      <span style="color:var(--text3)">Volume inicial</span><span style="color:var(--teal);font-weight:700">${weekKm}km/semana · ${_obData.daysPerWeek}x</span>
+    </div>
+  `;
+}
+
+// ── Volume calculation from profile ──────────────────────
+function calcWeekGoalFromProfile(data) {
+  const base = { beginner:20, intermediate:40, advanced:55 }[data.level] || 35;
+  const daysMult = { 2:0.6, 3:0.8, 4:1.0, 5:1.2, 6:1.35 }[data.daysPerWeek] || 1.0;
+  const raceMult = { '5k':0.7, '10k':0.85, half:1.0, marathon:1.2 }[data.raceType] || 1.0;
+  return Math.round(base * daysMult * raceMult / 5) * 5; // round to nearest 5
+}
+
+function calcMonthGoalFromWeek(weekKm) {
+  return Math.round(weekKm * 4.2 / 10) * 10;
+}
+
+// ── Finish & save ─────────────────────────────────────────
+function finishOnboarding() {
+  const btn = document.getElementById('ob-btn-next');
+  btn.disabled = true;
+  btn.textContent = 'Gerando plano...';
+
+  const weekKm = calcWeekGoalFromProfile(_obData);
+  const monthKm = calcMonthGoalFromWeek(weekKm);
+  const raceNames = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k'};
+
+  // Update state.config with onboarding data
+  state.config.name       = _obData.name;
+  state.config.weight     = _obData.weight;
+  state.config.height     = _obData.height;
+  state.config.weekGoal   = weekKm;
+  state.config.monthGoal  = monthKm;
+  state.config.raceDate   = _obData.raceDate || '';
+  state.config.raceName   = raceNames[_obData.raceType] || 'Maratona';
+  if(_obData.scale === '2x2') {
+    // Set scale start to today for 2x2 workers
+    state.config.scaleStart = today();
+  }
+
+  // Update athleteProfile
+  state.athleteProfile.goal       = _obData.targetTime || ('Completar ' + (raceNames[_obData.raceType]||'Maratona'));
+  state.athleteProfile.targetTime = _obData.targetTime;
+  state.athleteProfile.updatedAt  = new Date().toISOString();
+
+  // Mark onboarding done
+  state.onboardingDone = true;
+
+  // Generate first week plan
+  const firstPlan = generateFirstWeekPlan(_obData, weekKm);
+
+  // Save everything
+  save();
+
+  // Show first plan screen
+  hideOnboarding();
+  showFirstPlanScreen(firstPlan, weekKm);
+}
+
+// ── First week plan generator ─────────────────────────────
+function generateFirstWeekPlan(data, weekKm) {
+  const days = data.daysPerWeek;
+  const ws = weekStart(today());
+  // Start from next monday if today is mid-week
+  const startDate = new Date(ws+'T12:00:00');
+  if(startDate <= new Date()) startDate.setDate(startDate.getDate()+7);
+  const startStr = startDate.toISOString().split('T')[0];
+
+  const plans = [];
+  // Simple distribution based on days
+  const distributions = {
+    2: [1,6],        // Ter, Dom
+    3: [1,3,6],      // Ter, Qui, Dom
+    4: [1,3,5,6],    // Ter, Qui, Sex, Sáb (longão)
+    5: [1,2,3,5,6],
+    6: [0,1,2,3,5,6]
+  };
+  const offsets = distributions[days] || distributions[4];
+
+  const longDay = offsets[offsets.length-1]; // last day = longão
+  const totalKm = weekKm;
+  const longKm  = Math.round(totalKm * 0.35);
+  const easyKm  = Math.round((totalKm - longKm) / (offsets.length - 1));
+
+  offsets.forEach((dayOffset, idx) => {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + dayOffset);
+    const dateStr = d.toISOString().split('T')[0];
+    const isLong  = dayOffset === longDay;
+
+    plans.push({
+      id: `ob_plan_${dateStr}`,
+      date: dateStr,
+      type: isLong ? 'long' : 'z2',
+      dist: isLong ? longKm : easyKm,
+      pace: '',
+      hr: 0, rpe: 0, fatigue: 0,
+      notes: isLong ? 'Primeiro longão — pace confortável' : 'Corrida base Z2 — respiração controlada',
+      planned: true
+    });
+  });
+
+  // Add to state.workouts (remove any existing planned for that week)
+  const endDate = new Date(startDate); endDate.setDate(endDate.getDate()+6);
+  const endStr  = endDate.toISOString().split('T')[0];
+  state.workouts = state.workouts.filter(w => !(w.planned && w.date >= startStr && w.date <= endStr));
+  state.workouts.push(...plans);
+  save();
+
+  return { plans, weekKm, longKm, easyKm, days, startStr, endStr };
+}
+
+// ── First plan screen ─────────────────────────────────────
+function showFirstPlanScreen(planData, weekKm) {
+  const screen = document.getElementById('screen-first-plan');
+  const raceLabel = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k'}[_obData.raceType]||'Maratona';
+  const levelLabel = {beginner:'Iniciante',intermediate:'Intermediário',advanced:'Avançado'}[_obData.level]||'';
+
+  document.getElementById('fp-sub').innerHTML =
+    `${_obData.name}, seu Coach preparou a primeira semana.<br>Confira e começa a correr! 🎉`;
+
+  document.getElementById('fp-plan-preview').innerHTML = `
+    <div class="fp-plan-row">
+      <span class="fp-plan-key">Objetivo</span>
+      <span class="fp-plan-val">${raceLabel}</span>
+    </div>
+    <div class="fp-plan-row">
+      <span class="fp-plan-key">Volume inicial</span>
+      <span class="fp-plan-val">${weekKm} km / semana</span>
+    </div>
+    <div class="fp-plan-row">
+      <span class="fp-plan-key">Sessões planejadas</span>
+      <span class="fp-plan-val">${planData.plans.length} treinos</span>
+    </div>
+    <div class="fp-plan-row">
+      <span class="fp-plan-key">Longão inicial</span>
+      <span class="fp-plan-val">${planData.longKm} km</span>
+    </div>
+    <div class="fp-plan-row">
+      <span class="fp-plan-key">Semana</span>
+      <span class="fp-plan-val">${formatDate(planData.startStr)} →</span>
+    </div>
+  `;
+
+  screen.classList.remove('hidden');
+}
+
+function enterDashboard() {
+  document.getElementById('screen-first-plan').classList.add('hidden');
+  goTo('sec-dashboard');
+}
+
+// ── Hook into onAuthStateChanged (robust — called directly from auth listener) ──
+window._pmCheckOnboardingAfterAuth = function() {
+  // Wait for cloud data to load before deciding if onboarding is needed
+  setTimeout(() => {
+    const decide = () => {
+      // Backward compatibility: existing users with workout history never see onboarding
+      if(!state.onboardingDone && state.workouts && state.workouts.length > 0) {
+        state.onboardingDone = true;
+        save();
+        return;
+      }
+      if(!state.onboardingDone) checkOnboarding();
+    };
+    if(typeof downloadFromCloud === 'function') {
+      downloadFromCloud().then(decide).catch(decide);
+    } else {
+      decide();
+    }
+  }, 800); // slight delay to let Firebase load complete
+};
+
+// ── Safety net for local-only users (no login) ────────────
+// If there are already workouts, user is not new → skip onboarding
+window.addEventListener('load', () => {
+  if(!state.onboardingDone && state.workouts && state.workouts.length > 0) {
+    state.onboardingDone = true;
+    save();
+  }
+});
 </script>
 </body>
 </html>
