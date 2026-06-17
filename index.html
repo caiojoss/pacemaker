@@ -592,10 +592,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <div id="db-weekly-report"></div>
 
       <!-- Hero row -->
-      <div class="grid2" style="margin-bottom:12px">
-        <div class="card" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
-          <div class="label">Maratona em</div>
-          <div class="big-num" id="db-days" style="color:var(--accent)">--</div>
+      <div class="grid2" id="db-hero-row" style="margin-bottom:12px">
+        <div class="card" id="db-race-card" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
+          <div class="label" id="db-race-label">Próxima prova</div>
+          <div class="big-num" id="db-days" style="color:var(--accent);font-size:32px">--</div>
           <div class="sub" id="db-race-date">configurar data</div>
         </div>
         <div class="card" id="readiness-card">
@@ -911,11 +911,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
         <div class="form-group">
           <label class="form-label">Meta mensal de km</label>
-          <input type="number" class="form-input" id="cfg-month-goal" placeholder="190"/>
+          <input type="number" class="form-input" id="cfg-month-goal" placeholder="Ex: 150"/>
         </div>
         <div class="form-group">
           <label class="form-label">Meta de volume semanal (km)</label>
-          <input type="number" class="form-input" id="cfg-week-goal" placeholder="52"/>
+          <input type="number" class="form-input" id="cfg-week-goal" placeholder="Ex: 40"/>
         </div>
         <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar configurações</button>
       </div>
@@ -932,16 +932,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <div class="label" style="margin-bottom:12px">Dados pessoais</div>
         <div class="form-group">
           <label class="form-label">Nome</label>
-          <input type="text" class="form-input" id="cfg-name" placeholder="Caio"/>
+          <input type="text" class="form-input" id="cfg-name" placeholder="Seu nome"/>
         </div>
         <div class="grid2" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Peso (kg)</label>
-            <input type="number" class="form-input" id="cfg-weight" placeholder="110"/>
+            <input type="number" class="form-input" id="cfg-weight" placeholder="Ex: 70"/>
           </div>
           <div class="form-group">
             <label class="form-label">Altura (cm)</label>
-            <input type="number" class="form-input" id="cfg-height" placeholder="175"/>
+            <input type="number" class="form-input" id="cfg-height" placeholder="Ex: 175"/>
           </div>
         </div>
         <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar dados</button>
@@ -1035,6 +1035,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <div class="card">
         <div class="label" style="margin-bottom:10px">Dados do app</div>
         <button class="btn btn-danger btn-full" onclick="if(confirm('Apagar todos os treinos? Isso não pode ser desfeito.'))clearData()">Limpar todos os treinos</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px;font-size:11px;color:var(--text3)" onclick="enterOnboardingTestMode()">🧪 Testar onboarding (reversível)</button>
+        <button class="btn btn-ghost btn-full" id="btn-restore-test" style="margin-top:8px;font-size:11px;color:var(--teal);display:none" onclick="restoreFromTestBackup()">↩️ Restaurar meus dados reais</button>
       </div>
       <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:20px;padding-bottom:10px">PACEMAKER v1.0 · Seus dados ficam no dispositivo</div>
     </div>
@@ -1407,7 +1409,7 @@ function getStravaKey()  { return state.user?.uid ? `pacemaker_strava_${state.us
 function getStravaCidKey(){ return state.user?.uid ? `pacemaker_strava_cid_${state.user.uid}`    : 'pacemaker_strava_cid';    }
 function getStravaSecKey(){ return state.user?.uid ? `pacemaker_strava_secret_${state.user.uid}` : 'pacemaker_strava_secret'; }
 let state = {
-  config: { raceDate:'', raceName:'Maratona', monthGoal:190, weekGoal:52, scaleStart:'', name:'Caio', weight:110, height:175 },
+  config: { raceDate:'', raceName:'Maratona', monthGoal:0, weekGoal:0, scaleStart:'', name:'', weight:0, height:0 },
   workouts: [],
   chatHistory: [],
   athleteProfile: {
@@ -1783,7 +1785,7 @@ function renderWeeklyReport() {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="label" style="margin-bottom:0">Weekly Report · Semana Passada</div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-accent">v0.8.5</span>
+          <span class="badge badge-accent">v0.9.0</span>
           <button class="btn btn-ghost" style="font-size:9px;padding:4px 8px;display:none" id="wr-fulllink" onclick="goTo('sec-weekly-reports')">Ver completo →</button>
         </div>
       </div>
@@ -1828,17 +1830,25 @@ function renderDashboardBase() {
   // Weekly Report card (existia antes do v0.8.5 — restaurado)
   renderWeeklyReport();
 
-  // Countdown
+  // Countdown — v0.9.0: card só aparece se houver prova configurada, formato mais pessoal
   const rc = state.config.raceDate;
+  const raceCard = document.getElementById('db-race-card');
+  const heroRow = document.getElementById('db-hero-row');
   if(rc) {
     const days = daysBetween(today(), rc);
-    document.getElementById('db-days').textContent = days>0?days:'Dia D!';
-    document.getElementById('db-race-date').textContent = formatDate(rc) + ' · ' + (state.config.raceName||'Maratona');
+    if(raceCard) raceCard.style.display = '';
+    if(heroRow) heroRow.style.gridTemplateColumns = '1fr 1fr';
+    const dt = new Date(rc+'T12:00:00');
+    const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const fullDate = `${dt.getDate()} ${monthNames[dt.getMonth()]} ${dt.getFullYear()}`;
+    document.getElementById('db-race-label').textContent = 'Próxima prova';
+    document.getElementById('db-days').textContent = days>0?days+' dias':'Dia D! 🏁';
+    document.getElementById('db-race-date').textContent = (state.config.raceName||'Prova') + ' · ' + fullDate;
     document.getElementById('header-countdown').textContent = (days>0?days+'d':'Dia D') + ' 🏁';
   } else {
-    document.getElementById('db-days').textContent = '--';
-    document.getElementById('db-race-date').textContent = 'Configure a data';
-    document.getElementById('header-countdown').textContent = '-- dias';
+    if(raceCard) raceCard.style.display = 'none';
+    if(heroRow) heroRow.style.gridTemplateColumns = '1fr';
+    document.getElementById('header-countdown').textContent = '';
   }
 
   // KMs — completed only (truth source)
@@ -2118,13 +2128,13 @@ function renderPlannerSuggestion() {
   const ws = weekStart(today());
   const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
   const weStr = we.toISOString().split('T')[0];
-  // Bug 1 fix: use actual planned volume for current week if plan exists, else config goal
-  const currentWeekPlanned = state.workouts.filter(w=>isPlanned(w)&&w.date>=ws&&w.date<=weStr);
-  const plannedKm = currentWeekPlanned.reduce((a,w)=>a+(w.dist||0),0);
-  const wg = plannedKm > 0 ? plannedKm : (state.config.weekGoal||52);
+  // Bug fix: total da semana = planned restante + completed (não só o que ainda falta)
+  const currentWeekAll = state.workouts.filter(w=>(isPlanned(w)||isCompleted(w))&&w.date>=ws&&w.date<=weStr);
+  const totalWeekKm = currentWeekAll.reduce((a,w)=>a+(w.dist||0),0);
+  const wg = totalWeekKm > 0 ? totalWeekKm : (state.config.weekGoal||52);
   const remaining = Math.max(0, wg - wkm);
   const adherence = planAdherence();
-  const hasPlanCurrent = currentWeekPlanned.length > 0;
+  const hasPlanCurrent = currentWeekAll.some(w=>isPlanned(w));
   const el = document.getElementById('planner-week-suggestion');
   el.innerHTML = `
     <div class="card-header-row">
@@ -2787,7 +2797,7 @@ function renderCoachContext() {
   }
 
   if(state.chatHistory.length===0) {
-    const name = state.config.name||'Caio';
+    const name = state.config.name||'Atleta';
     state.chatHistory.push({role:'coach', text:`Olá, ${name}! Seu coach está pronto.\n\nSemana passada: ${c.lastWeekKm}km. Esta semana: ${c.wkm}km. Prontidão: ${c.rs}/100.\n\n${c.days!=='--'?`Faltam ${c.days} dias para a maratona.`:'Configure a data da maratona em Configurações.'}\n\nUse o card "Planejar semana" acima para montar seu treino no calendário, ou me faça uma pergunta.`});
     save();
   }
@@ -3125,6 +3135,10 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   const priorityFactor = {volume:1.1, rhythm:1.0, recovery:0.85}[params.priority]||1;
   const doneKm = weekDays.filter(d=>d.done).reduce((a,d)=>a+(d.done.dist||0),0);
   let remaining = Math.max(0, kmGoal-doneKm);
+  // Bug fix: planKm é o volume a DISTRIBUIR nos dias livres (exclui o que já foi corrido).
+  // Sem isso, semanas com dias já completados (ex: segunda já feita) somavam
+  // proporções calculadas sobre kmGoal total + o km já realizado, gerando excesso.
+  const planKm = remaining;
   const targetLong = Math.min(36, Math.round(params.long * fatigueMultiplier));
   const noteLC = notes.toLowerCase();
   const hasRace = noteLC.includes('prova')||noteLC.includes('race');
@@ -3144,7 +3158,7 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     freeOffDays.find(d=>[6,0].includes(new Date(d.date+'T12:00:00').getDay()))||freeOffDays[0]
   ) : null;
   if(longDay) {
-    const dist = Math.min(targetLong, Math.round(kmGoal * 0.45));
+    const dist = Math.min(targetLong, Math.round(planKm * 0.45));
     longDay.workout = {
       type:'long', title:`Longão ${dist}km`, dist, pace:'6:20–6:45',
       desc:`${dist}km em Z2 · pace 6:20–6:45 · FC <145bpm`,
@@ -3162,7 +3176,7 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   const qualityDays = freeOffDays.filter(d=>d!==longDay).slice(0, qualityCount);
   qualityDays.forEach((d,qi)=>{
     if(feeling==='pain'||feeling==='tired') return;
-    const dist = Math.round(Math.min(14, Math.max(8, kmGoal * 0.2)));
+    const dist = Math.round(Math.min(14, Math.max(8, planKm * 0.2)));
     if(wantIntervals||qi===1) {
       d.workout={type:'interval',title:`Tiros ${dist}km`,dist,pace:'5:00–5:15',
         desc:`2km aq + ${dist-4}x1km (5:00–5:15) + rec 90s + 2km volta`,
@@ -3203,8 +3217,8 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     remaining -= km;
   });
 
-  // 5. Load balance: adjust Z2 days to hit km goal
-  balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier);
+  // 5. Load balance: adjust Z2 days to hit km goal (usa planKm = volume a distribuir, não o total da semana)
+  balanceWeeklyLoad(plan, planKm, fatigueMultiplier);
 
   // 6. Race adjustment
   if(hasRace&&freeDays.length>0) {
@@ -3772,12 +3786,15 @@ function loadConfig() {
   const c = state.config;
   document.getElementById('cfg-race-date').value = c.raceDate||'';
   document.getElementById('cfg-race-name').value = c.raceName||'';
-  document.getElementById('cfg-month-goal').value = c.monthGoal||190;
-  document.getElementById('cfg-week-goal').value = c.weekGoal||52;
+  document.getElementById('cfg-month-goal').value = c.monthGoal || '';
+  document.getElementById('cfg-week-goal').value = c.weekGoal || '';
   document.getElementById('cfg-scale-start').value = c.scaleStart||'';
   document.getElementById('cfg-name').value = c.name||'';
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
+  // v0.9.0: mostra botão de restaurar se existe backup de teste pendente
+  const restoreBtn = document.getElementById('btn-restore-test');
+  if(restoreBtn) restoreBtn.style.display = hasTestBackup() ? '' : 'none';
   loadGeminiKeyField();
   const cid = localStorage.getItem(getStravaCidKey());
   if(cid) document.getElementById('cfg-strava-id').value = cid;
@@ -3830,6 +3847,55 @@ function saveConfig() {
 function clearData() {
   state.workouts = []; state.chatHistory = [];
   save(); showToast('Treinos apagados'); renderDashboard(); renderLog();
+}
+
+// v0.9.0: MODO TESTE — reversível, não toca na nuvem
+// Faz backup do estado real num snapshot local separado, zera a tela
+// para simular um usuário novo, e permite restaurar tudo depois.
+const TEST_BACKUP_KEY = 'pacemaker_test_backup';
+
+function enterOnboardingTestMode() {
+  if(!confirm('Vou guardar uma cópia dos seus dados atuais e mostrar a tela de onboarding como se você fosse novo.\n\nNada é apagado de verdade — nem local, nem na nuvem. Se você recarregar a página (F5), volta tudo automaticamente. Continuar?')) return;
+
+  // Backup do estado atual (incluindo onboardingDone real) num snapshot separado
+  const backup = JSON.parse(JSON.stringify(state));
+  localStorage.setItem(TEST_BACKUP_KEY, JSON.stringify(backup));
+
+  // Trava o sync com a nuvem enquanto o modo teste estiver ativo
+  _testModeActive = true;
+
+  // Simula "usuário novo" só na sessão atual — sem tocar localStorage principal nem Firestore
+  state.workouts = [];
+  state.chatHistory = [];
+  state.onboardingDone = false;
+
+  showToast('Modo teste ativado — seus dados reais estão salvos');
+  renderDashboard();
+  renderLog();
+  showOnboarding();
+}
+
+function restoreFromTestBackup() {
+  const raw = localStorage.getItem(TEST_BACKUP_KEY);
+  if(!raw) { showToast('Nenhum backup de teste encontrado'); return; }
+  try {
+    const backup = JSON.parse(raw);
+    state = { ...state, ...backup, user: state.user }; // mantém o user atual (sessão de login ativa)
+    _testModeActive = false; // libera o sync com a nuvem de volta ao normal
+    save(); // persiste a restauração local; sincroniza com a nuvem normalmente
+    localStorage.removeItem(TEST_BACKUP_KEY);
+    showToast('Dados reais restaurados ✓');
+    hideOnboarding();
+    document.getElementById('screen-first-plan')?.classList.add('hidden');
+    goTo('sec-dashboard');
+  } catch(e) {
+    showToast('Erro ao restaurar backup');
+    console.error(e);
+  }
+}
+
+function hasTestBackup() {
+  return !!localStorage.getItem(TEST_BACKUP_KEY);
 }
 
 // ==================== STRAVA OAUTH ====================
@@ -4564,10 +4630,12 @@ function checkMigration() {
 
 // Patch save() to also push to cloud when logged in
 const _originalSave = save;
+let _testModeActive = false; // v0.9.0: quando true, save() não sincroniza com a nuvem
+
 function save() {
   localStorage.setItem(getDbKey(), JSON.stringify(state));
-  // Background cloud sync — non-blocking, only if logged in and online
-  if(state.user && navigator.onLine) {
+  // Background cloud sync — non-blocking, only if logged in, online, and NOT in test mode
+  if(state.user && navigator.onLine && !_testModeActive) {
     uploadToCloud().catch(() => {});
   }
 }
@@ -4892,14 +4960,14 @@ function renderWeeklyReports() {
   el.innerHTML = `
     <div style="padding:0 0 16px;margin-bottom:16px;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Análise das últimas 8 semanas de treino</div>
-      <span class="badge badge-accent">v0.8.5</span>
+      <span class="badge badge-accent">v0.9.0</span>
     </div>
     ${trendHtml}
     ${analysisHtml}
     <div class="label" style="margin-bottom:12px;letter-spacing:.1em">DETALHAMENTO SEMANAL</div>
     ${cardsHtml}
     <div style="text-align:center;font-family:var(--mono);font-size:9px;color:var(--text3);padding:16px 0">
-      Dados baseados nos treinos registrados · v0.8.5 Context Engine
+      Dados baseados nos treinos registrados · v0.9.0 Context Engine
     </div>
   `;
 }
@@ -5169,6 +5237,33 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
   opacity:0;transform:translateX(-40px);
 }
 
+/* v0.9.0 refinamento: tela final centralizada, sem scroll, mais emocional */
+.ob-step-centered {
+  align-items:center;text-align:center;justify-content:center;
+  overflow-y:hidden!important;
+}
+.ob-icon-hero {
+  font-size:48px;margin-bottom:18px;
+  animation:fp-pop .45s cubic-bezier(.34,1.56,.64,1) both;
+}
+.ob-summary-cards {
+  display:flex;flex-direction:column;gap:8px;
+  width:100%;margin-top:20px;
+}
+.ob-summary-row {
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 16px;background:var(--surface2);
+  border-radius:var(--r-sm);border:1px solid var(--border);
+}
+.ob-summary-key {
+  font-family:var(--mono);font-size:10px;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.06em;
+}
+.ob-summary-val {
+  font-family:var(--display);font-size:14px;font-weight:700;color:var(--text);
+}
+.ob-summary-val.accent { color:var(--accent); }
+
 /* Step content */
 .ob-eyebrow {
   font-family:var(--mono);font-size:10px;letter-spacing:.14em;
@@ -5333,8 +5428,8 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
     <!-- STEP 1: Profile -->
     <div class="ob-step" data-step="1">
       <div class="ob-eyebrow">Passo 1 de 5</div>
-      <div class="ob-title">Qual é o seu perfil?</div>
-      <div class="ob-sub">Usamos isso para calibrar seu plano com segurança.</div>
+      <div class="ob-title">Vamos te conhecer<br>um pouco melhor</div>
+      <div class="ob-sub">Isso ajuda a montar um plano seguro pro seu corpo.</div>
       <div class="ob-field">
         <div class="ob-label">Como quer ser chamado?</div>
         <input class="ob-input" id="ob-name" type="text" placeholder="Seu nome" autocomplete="given-name"/>
@@ -5373,22 +5468,22 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
     <!-- STEP 3: Goal -->
     <div class="ob-step" data-step="3">
       <div class="ob-eyebrow">Passo 3 de 5</div>
-      <div class="ob-title">Qual é seu objetivo?</div>
-      <div class="ob-sub">Escolha a prova alvo principal.</div>
+      <div class="ob-title">O que você quer<br>conquistar?</div>
+      <div class="ob-sub">Isso define a estrutura do seu treino.</div>
       <div class="ob-field">
-        <div class="ob-label">Modalidade</div>
         <div class="ob-chips" id="ob-race-chips">
-          <div class="ob-chip" data-val="5k" onclick="selectChip('ob-race-chips',this)">5k</div>
-          <div class="ob-chip" data-val="10k" onclick="selectChip('ob-race-chips',this)">10k</div>
-          <div class="ob-chip" data-val="half" onclick="selectChip('ob-race-chips',this)">Meia Maratona</div>
-          <div class="ob-chip sel" data-val="marathon" onclick="selectChip('ob-race-chips',this)">Maratona</div>
+          <div class="ob-chip" data-val="health" onclick="selectRaceChip(this)">Saúde e condicionamento</div>
+          <div class="ob-chip" data-val="5k" onclick="selectRaceChip(this)">Correr 5 km</div>
+          <div class="ob-chip" data-val="10k" onclick="selectRaceChip(this)">Correr 10 km</div>
+          <div class="ob-chip" data-val="half" onclick="selectRaceChip(this)">Meia maratona</div>
+          <div class="ob-chip sel" data-val="marathon" onclick="selectRaceChip(this)">Maratona</div>
         </div>
       </div>
-      <div class="ob-field">
+      <div class="ob-field" id="ob-targettime-field">
         <div class="ob-label">Meta de tempo (opcional)</div>
         <input class="ob-input" id="ob-targettime" type="text" placeholder="Ex: Sub 4h, Sub 2h, 5:30/km"/>
       </div>
-      <div class="ob-field">
+      <div class="ob-field" id="ob-racedate-field">
         <div class="ob-label">Data da prova (opcional)</div>
         <input class="ob-input" id="ob-racedate" type="date"/>
       </div>
@@ -5410,21 +5505,43 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
         </div>
       </div>
       <div class="ob-field" style="margin-top:20px">
-        <div class="ob-label">Você trabalha em escala?</div>
+        <div class="ob-label">Como é a sua rotina de trabalho?</div>
         <div class="ob-chips" id="ob-scale-chips">
-          <div class="ob-chip" data-val="2x2" onclick="selectChip('ob-scale-chips',this)">2x2 (2 dias on/off)</div>
-          <div class="ob-chip" data-val="5x2" onclick="selectChip('ob-scale-chips',this)">Semana comercial</div>
-          <div class="ob-chip" data-val="other" onclick="selectChip('ob-scale-chips',this)">Outra</div>
+          <div class="ob-chip sel" data-val="5x2" onclick="selectScaleChip(this)">5x2 (Segunda a Sexta)</div>
+          <div class="ob-chip" data-val="6x1" onclick="selectScaleChip(this)">6x1</div>
+          <div class="ob-chip" data-val="2x2" onclick="selectScaleChip(this)">2x2</div>
+          <div class="ob-chip" data-val="12x36" onclick="selectScaleChip(this)">12x36</div>
+          <div class="ob-chip" data-val="custom" onclick="selectScaleChip(this)">Personalizada</div>
+        </div>
+      </div>
+
+      <!-- Rotação — só para 2x2 e 12x36 -->
+      <div class="ob-field" id="ob-rotation-field" style="display:none;margin-top:14px">
+        <div class="ob-label">Quando começa esse ciclo?</div>
+        <input class="ob-input" id="ob-rotation-start" type="date"/>
+      </div>
+
+      <!-- Dias personalizados — só para Personalizada -->
+      <div class="ob-field" id="ob-custom-days-field" style="display:none;margin-top:14px">
+        <div class="ob-label">Em quais dias você trabalha?</div>
+        <div class="ob-chips" id="ob-custom-days-chips">
+          <div class="ob-chip" data-val="1" onclick="toggleCustomDay(this)">Seg</div>
+          <div class="ob-chip" data-val="2" onclick="toggleCustomDay(this)">Ter</div>
+          <div class="ob-chip" data-val="3" onclick="toggleCustomDay(this)">Qua</div>
+          <div class="ob-chip" data-val="4" onclick="toggleCustomDay(this)">Qui</div>
+          <div class="ob-chip" data-val="5" onclick="toggleCustomDay(this)">Sex</div>
+          <div class="ob-chip" data-val="6" onclick="toggleCustomDay(this)">Sáb</div>
+          <div class="ob-chip" data-val="0" onclick="toggleCustomDay(this)">Dom</div>
         </div>
       </div>
     </div>
 
     <!-- STEP 5: Summary -->
-    <div class="ob-step" data-step="5">
-      <div class="ob-eyebrow">Passo 5 de 5</div>
-      <div class="ob-title">Tudo certo.<br>Vamos montar<br>seu plano.</div>
-      <div class="ob-sub">Confirme seus dados antes de gerar.</div>
-      <div id="ob-summary" style="background:var(--surface2);border-radius:var(--r);padding:16px;margin-bottom:8px;font-family:var(--mono);font-size:12px;line-height:2"></div>
+    <div class="ob-step ob-step-centered" data-step="5">
+      <div class="ob-icon-hero">🎯</div>
+      <div class="ob-title" style="text-align:center">Seu Coach<br>está pronto.</div>
+      <div class="ob-sub" style="text-align:center">Confira o resumo antes de gerar seu plano.</div>
+      <div id="ob-summary" class="ob-summary-cards"></div>
     </div>
   </div>
 
@@ -5457,7 +5574,7 @@ const _obData = {
   name:'', weight:0, height:0,
   level:'intermediate', bestTime:'',
   raceType:'marathon', targetTime:'', raceDate:'',
-  daysPerWeek:4, scale:'2x2'
+  daysPerWeek:4, scale:'5x2', scaleStart:'', customWorkDays:[]
 };
 
 // ── Entry point ───────────────────────────────────────────
@@ -5510,7 +5627,7 @@ function renderObStep(step) {
   } else if(step === OB_TOTAL_STEPS - 1) {
     nextBtn.textContent = '🚀 Gerar meu plano';
     backBtn.style.display = 'block';
-    counter.textContent = `${step} de ${OB_TOTAL_STEPS - 1}`;
+    counter.textContent = ''; // tela final não mostra contador — não é mais um formulário
     renderObSummary();
   } else {
     nextBtn.textContent = 'Continuar →';
@@ -5582,6 +5699,12 @@ function collectObStep(step) {
     if(dc) _obData.daysPerWeek = parseInt(dc.dataset.val);
     const sc = document.querySelector('#ob-scale-chips .ob-chip.sel');
     if(sc) _obData.scale = sc.dataset.val;
+    // Rotação (2x2 / 12x36)
+    const rotationInput = document.getElementById('ob-rotation-start');
+    _obData.scaleStart = rotationInput ? rotationInput.value : '';
+    // Dias personalizados
+    const customDays = Array.from(document.querySelectorAll('#ob-custom-days-chips .ob-chip.sel')).map(c=>c.dataset.val);
+    _obData.customWorkDays = customDays;
   }
 }
 
@@ -5602,30 +5725,66 @@ function selectDayChip(el) {
   el.classList.add('sel');
 }
 
+// v0.9.0 refinamento: escala de trabalho com campos condicionais
+// v0.9.0 refinamento: oculta campos irrelevantes quando objetivo é saúde/condicionamento
+function selectRaceChip(el) {
+  document.querySelectorAll('#ob-race-chips .ob-chip').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+  _obData.raceType = el.dataset.val;
+
+  const isHealth = el.dataset.val === 'health';
+  const timeField = document.getElementById('ob-targettime-field');
+  const dateField = document.getElementById('ob-racedate-field');
+  if(timeField) timeField.style.display = isHealth ? 'none' : 'block';
+  if(dateField) dateField.style.display = isHealth ? 'none' : 'block';
+}
+
+function selectScaleChip(el) {
+  document.querySelectorAll('#ob-scale-chips .ob-chip').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+  _obData.scale = el.dataset.val;
+
+  const rotationField = document.getElementById('ob-rotation-field');
+  const customField = document.getElementById('ob-custom-days-field');
+
+  // Apenas 2x2 e 12x36 pedem data de início da rotação
+  const needsRotation = ['2x2','12x36'].includes(el.dataset.val);
+  if(rotationField) rotationField.style.display = needsRotation ? 'block' : 'none';
+
+  // Apenas Personalizada pede seleção manual de dias
+  const isCustom = el.dataset.val === 'custom';
+  if(customField) customField.style.display = isCustom ? 'block' : 'none';
+}
+
+function toggleCustomDay(el) {
+  el.classList.toggle('sel');
+}
+
 // ── Summary ───────────────────────────────────────────────
 function renderObSummary() {
   // Collect all before showing summary
   for(let i=1;i<=4;i++) collectObStep(i);
 
-  const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k'};
-  const levelLabels = {beginner:'Iniciante',intermediate:'Intermediário',advanced:'Avançado'};
+  const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'};
   const weekKm = calcWeekGoalFromProfile(_obData);
+  const longKm = Math.round(weekKm * 0.35);
 
   document.getElementById('ob-summary').innerHTML = `
-    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
-      <span style="color:var(--text3)">Nome</span><span style="color:var(--text);font-weight:700">${_obData.name}</span>
+    <div class="ob-summary-row">
+      <span class="ob-summary-key">Objetivo</span>
+      <span class="ob-summary-val accent">${raceLabels[_obData.raceType]||'Maratona'}</span>
     </div>
-    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
-      <span style="color:var(--text3)">Perfil</span><span>${_obData.weight}kg · ${_obData.height}cm · ${levelLabels[_obData.level]||'Intermediário'}</span>
+    <div class="ob-summary-row">
+      <span class="ob-summary-key">Volume inicial</span>
+      <span class="ob-summary-val">${weekKm} km / semana</span>
     </div>
-    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
-      <span style="color:var(--text3)">Objetivo</span><span style="color:var(--accent);font-weight:700">${raceLabels[_obData.raceType]||'Maratona'}${_obData.targetTime?' · '+_obData.targetTime:''}</span>
+    <div class="ob-summary-row">
+      <span class="ob-summary-key">Treinos por semana</span>
+      <span class="ob-summary-val">${_obData.daysPerWeek}x</span>
     </div>
-    <div style="display:flex;justify-content:space-between;border-bottom:.5px solid var(--border);padding-bottom:8px;margin-bottom:8px">
-      <span style="color:var(--text3)">Prova</span><span>${_obData.raceDate ? formatDate(_obData.raceDate) : 'A definir'}</span>
-    </div>
-    <div style="display:flex;justify-content:space-between">
-      <span style="color:var(--text3)">Volume inicial</span><span style="color:var(--teal);font-weight:700">${weekKm}km/semana · ${_obData.daysPerWeek}x</span>
+    <div class="ob-summary-row">
+      <span class="ob-summary-key">Longão inicial</span>
+      <span class="ob-summary-val">${longKm} km</span>
     </div>
   `;
 }
@@ -5634,7 +5793,7 @@ function renderObSummary() {
 function calcWeekGoalFromProfile(data) {
   const base = { beginner:20, intermediate:40, advanced:55 }[data.level] || 35;
   const daysMult = { 2:0.6, 3:0.8, 4:1.0, 5:1.2, 6:1.35 }[data.daysPerWeek] || 1.0;
-  const raceMult = { '5k':0.7, '10k':0.85, half:1.0, marathon:1.2 }[data.raceType] || 1.0;
+  const raceMult = { '5k':0.7, '10k':0.85, half:1.0, marathon:1.2, health:0.65 }[data.raceType] || 1.0;
   return Math.round(base * daysMult * raceMult / 5) * 5; // round to nearest 5
 }
 
@@ -5650,7 +5809,7 @@ function finishOnboarding() {
 
   const weekKm = calcWeekGoalFromProfile(_obData);
   const monthKm = calcMonthGoalFromWeek(weekKm);
-  const raceNames = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k'};
+  const raceNames = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'};
 
   // Update state.config with onboarding data
   state.config.name       = _obData.name;
@@ -5660,9 +5819,13 @@ function finishOnboarding() {
   state.config.monthGoal  = monthKm;
   state.config.raceDate   = _obData.raceDate || '';
   state.config.raceName   = raceNames[_obData.raceType] || 'Maratona';
-  if(_obData.scale === '2x2') {
-    // Set scale start to today for 2x2 workers
-    state.config.scaleStart = today();
+  // Rotação de escala — só relevante para 2x2 e 12x36
+  if(['2x2','12x36'].includes(_obData.scale)) {
+    state.config.scaleStart = _obData.scaleStart || today();
+  }
+  state.config.workSchedule = _obData.scale; // v0.9.0: guarda o tipo de escala escolhido
+  if(_obData.scale === 'custom') {
+    state.config.customWorkDays = _obData.customWorkDays || [];
   }
 
   // Update athleteProfile
@@ -5740,7 +5903,7 @@ function generateFirstWeekPlan(data, weekKm) {
 // ── First plan screen ─────────────────────────────────────
 function showFirstPlanScreen(planData, weekKm) {
   const screen = document.getElementById('screen-first-plan');
-  const raceLabel = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k'}[_obData.raceType]||'Maratona';
+  const raceLabel = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'}[_obData.raceType]||'Maratona';
   const levelLabel = {beginner:'Iniciante',intermediate:'Intermediário',advanced:'Avançado'}[_obData.level]||'';
 
   document.getElementById('fp-sub').innerHTML =
