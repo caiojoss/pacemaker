@@ -787,6 +787,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <div style="font-family:var(--mono);font-size:12px;color:var(--text2)" id="race-target-line">Meta: <strong style="color:var(--accent)">sub 3h58</strong> · Pace: <strong style="color:var(--teal)">5:41/km</strong></div>
       </div>
 
+      <!-- v0.9.2.2 (P0): empty state dedicado — elemento separado, nunca destrói os ids -->
+      <!-- acima via innerHTML (causava TypeError em re-renders: "Cannot set properties of null"). -->
+      <div class="race-hero" id="race-hero-empty" style="display:none">
+        <div style="text-align:center;padding:8px 0">
+          <div style="font-size:36px;margin-bottom:12px">📏</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:8px">Precisamos de mais dados</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:16px">
+            Registre pelo menos <strong style="color:var(--accent)">1 longão (15km+)</strong> com pace<br>para calcular sua previsão de prova.
+          </div>
+          <button class="btn btn-ghost" style="font-size:11px" onclick="openModal('modal-log')">+ Registrar treino</button>
+        </div>
+      </div>
+
       <!-- Fitness hero — só para objetivo "Saúde e condicionamento" -->
       <div class="race-hero" id="race-hero-fitness" style="display:none">
         <div class="label">Sua evolução</div>
@@ -814,26 +827,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
 
       <!-- Zones -->
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px">Zonas de treino</div>
-      <div class="pace-zone">
-        <div><div class="pace-zone-name">Z1 · Recuperação</div><div class="pace-zone-bpm">&lt; 125 bpm</div></div>
-        <div class="pace-zone-val" style="color:var(--blue)">7:10 /km</div>
-      </div>
-      <div class="pace-zone">
-        <div><div class="pace-zone-name">Z2 · Base aeróbica</div><div class="pace-zone-bpm">125–142 bpm</div></div>
-        <div class="pace-zone-val" style="color:var(--green)">6:20 /km</div>
-      </div>
-      <div class="pace-zone">
-        <div><div class="pace-zone-name">Z3 · Tempo/Limiar</div><div class="pace-zone-bpm">142–158 bpm</div></div>
-        <div class="pace-zone-val" style="color:var(--orange)">5:48 /km</div>
+      <!-- v0.9.2.2 (complementar): id no título e wrapper nas zonas genéricas (Z1-Z4)
+           para que possam ser ocultadas por completo quando getZoneReadiness() indicar
+           dados insuficientes — Opção A. race-pace-zone já é controlada por hasRacePrediction. -->
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px" id="race-zones-title">Zonas de treino</div>
+      <div id="race-zones-generic">
+        <div class="pace-zone">
+          <div><div class="pace-zone-name">Z1 · Recuperação</div><div class="pace-zone-bpm">&lt; 125 bpm</div></div>
+          <div class="pace-zone-val" style="color:var(--blue)">7:10 /km</div>
+        </div>
+        <div class="pace-zone">
+          <div><div class="pace-zone-name">Z2 · Base aeróbica</div><div class="pace-zone-bpm">125–142 bpm</div></div>
+          <div class="pace-zone-val" style="color:var(--green)">6:20 /km</div>
+        </div>
+        <div class="pace-zone">
+          <div><div class="pace-zone-name">Z3 · Tempo/Limiar</div><div class="pace-zone-bpm">142–158 bpm</div></div>
+          <div class="pace-zone-val" style="color:var(--orange)">5:48 /km</div>
+        </div>
       </div>
       <div class="pace-zone" id="race-pace-zone" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
         <div><div class="pace-zone-name" style="color:var(--accent)" id="race-pace-zone-name">Race Pace · Sub 4h</div><div class="pace-zone-bpm">155–162 bpm</div></div>
-        <div class="pace-zone-val" style="color:var(--accent)">5:41 /km</div>
+        <div class="pace-zone-val" style="color:var(--accent)" id="race-pace-zone-val">5:41 /km</div>
       </div>
-      <div class="pace-zone">
-        <div><div class="pace-zone-name">Z4 · VO2max</div><div class="pace-zone-bpm">158–172 bpm</div></div>
-        <div class="pace-zone-val" style="color:var(--red)">5:15 /km</div>
+      <div id="race-zones-generic-2">
+        <div class="pace-zone">
+          <div><div class="pace-zone-name">Z4 · VO2max</div><div class="pace-zone-bpm">158–172 bpm</div></div>
+          <div class="pace-zone-val" style="color:var(--red)">5:15 /km</div>
+        </div>
       </div>
       <!-- Longão history -->
       <div style="font-size:13px;font-weight:700;margin:16px 0 10px" id="race-source-title">Fonte dos dados</div>
@@ -1464,6 +1484,7 @@ function getStravaKey()  { return state.user?.uid ? `pacemaker_strava_${state.us
 function getStravaCidKey(){ return state.user?.uid ? `pacemaker_strava_cid_${state.user.uid}`    : 'pacemaker_strava_cid';    }
 function getStravaSecKey(){ return state.user?.uid ? `pacemaker_strava_secret_${state.user.uid}` : 'pacemaker_strava_secret'; }
 let state = {
+  updatedAt: null, // v0.9.2.2 (P0): timestamp da última alteração local — usado para evitar que dados antigos da nuvem sobrescrevam dados locais mais recentes
   config: { raceDate:'', raceName:'Maratona', monthGoal:0, weekGoal:0, scaleStart:'', name:'', weight:0, height:0, goalType:'', workSchedule:'', customWorkDays:[] },
   workouts: [],
   chatHistory: [],
@@ -2445,6 +2466,7 @@ function renderRaceIQ() {
   if(isHealthGoal) {
     if(heroRace) heroRace.style.display = 'none';
     if(heroFitness) heroFitness.style.display = '';
+    if(document.getElementById('race-hero-empty')) document.getElementById('race-hero-empty').style.display = 'none';
     if(gapCard) gapCard.style.display = 'none';
     if(fitnessCard) fitnessCard.style.display = '';
     if(raceZone) raceZone.style.display = 'none'; // Sub4h zone não faz sentido sem meta de prova
@@ -2488,22 +2510,41 @@ function renderRaceIQ() {
     return Math.round(avgPaceSec * 1.055 * 42.195);
   })() : 0;
 
+  // v0.9.2.2 (P0): flag única de verdade — controla TUDO relacionado a previsão.
+  // Se false, nenhum valor de previsão (Gap, Race Pace, pace previsto, Sub-X) pode aparecer.
+  const hasRacePrediction = pred > 0;
+
+  // Gap card e Race Pace zone só existem visualmente quando há previsão válida.
+  // Antes: ficavam sempre visíveis (até com dado hardcoded "5:41/km" nunca atualizado).
+  if(gapCard)  gapCard.style.display  = hasRacePrediction ? '' : 'none';
+  if(raceZone) raceZone.style.display = hasRacePrediction ? '' : 'none';
+
   // Target time: usa o que foi definido no onboarding/config, com fallback pro sub4 clássico
   const targetTimeStr = state.athleteProfile?.targetTime || '';
   const targetSec = targetTimeStr ? parseTargetTimeToSec(targetTimeStr) : (4*3600-120);
   const targetLabel = targetTimeStr || 'sub 3h58';
+  const targetPaceSec = targetSec / 42.195;
+  const pMin = Math.floor(targetPaceSec/60);
+  const pSec = Math.round(targetPaceSec%60);
+  const targetPaceStr = `${pMin}:${String(pSec).padStart(2,'0')}/km`;
 
   const gapLabel = document.getElementById('race-gap-label');
   if(gapLabel) gapLabel.textContent = `Gap para o ${targetLabel}`;
   const targetLine = document.getElementById('race-target-line');
+  // v0.9.2.2 (P0): a linha "Meta: sub-X · Pace: ..." só aparece junto com uma previsão válida —
+  // caso contrário some por completo (fica dentro do hero, que já vira a tela de "mais dados").
   if(targetLine) {
-    const targetPaceSec = targetSec / 42.195;
-    const pMin = Math.floor(targetPaceSec/60);
-    const pSec = Math.round(targetPaceSec%60);
-    targetLine.innerHTML = `Meta: <strong style="color:var(--accent)">${targetLabel}</strong> · Pace: <strong style="color:var(--teal)">${pMin}:${String(pSec).padStart(2,'0')}/km</strong>`;
+    targetLine.style.display = hasRacePrediction ? '' : 'none';
+    if(hasRacePrediction) {
+      targetLine.innerHTML = `Meta: <strong style="color:var(--accent)">${targetLabel}</strong> · Pace: <strong style="color:var(--teal)">${targetPaceStr}</strong>`;
+    }
   }
   const raceZoneName = document.getElementById('race-pace-zone-name');
   if(raceZoneName) raceZoneName.textContent = `Race Pace · ${targetLabel}`;
+  const raceZoneVal = document.getElementById('race-pace-zone-val');
+  // v0.9.2.2 (P0): antes esse valor era texto fixo no HTML ("5:41 /km"), nunca atualizado —
+  // agora reflete o pace real da meta, e só é renderizado quando hasRacePrediction é true.
+  if(raceZoneVal && hasRacePrediction) raceZoneVal.textContent = `${targetPaceStr.replace('/km',' /km')}`;
 
   // Source card
   const srcEl = document.getElementById('race-source-card');
@@ -2542,49 +2583,46 @@ function renderRaceIQ() {
     }
     document.getElementById('race-basis').textContent =
       `${realLongoes.length} longão(s) real(is)${realLongoes.some(w=>w.stravaId)?' · Strava':' · manual'}`;
-  } else {
-    // v0.9.2: empty state inteligente — sem "--" ou estimativas sem base
-    document.getElementById('race-predicted').textContent = '?';
-    document.getElementById('race-predicted').style.fontSize = '32px';
-    document.getElementById('race-predicted').style.color = 'var(--text3)';
-    document.getElementById('race-gap-badge').textContent = 'Aguardando dados';
-    document.getElementById('race-gap-bar').style.width = '0';
-    document.getElementById('race-gap-desc').textContent = 'Registre longões com pace para gerar sua primeira previsão.';
-    document.getElementById('race-basis').textContent = '';
-    // Substituir hero prediction por orientação
-    const heroPredEl = document.getElementById('race-hero-prediction');
-    if(heroPredEl && realLongoes.length === 0) {
-      heroPredEl.innerHTML = `
-        <div style="text-align:center;padding:8px 0">
-          <div style="font-size:36px;margin-bottom:12px">📏</div>
-          <div style="font-size:16px;font-weight:700;margin-bottom:8px">Precisamos de mais dados</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:16px">
-            Registre pelo menos <strong style="color:var(--accent)">1 longão (15km+)</strong> com pace<br>para calcular sua previsão de prova.
-          </div>
-          <button class="btn btn-ghost" style="font-size:11px" onclick="openModal('modal-log')">+ Registrar treino</button>
-        </div>`;
-    }
   }
 
-  // v0.9.2: zonas — mostrar apenas se há dados suficientes, caso contrário exibir orientação
-  const zoneReadiness = getZoneReadiness();
-  const zonesContainer = document.querySelector('#sec-race .pace-zone')?.closest('div[style]') || null;
+  // v0.9.2.2 (P0): troca entre os dois heroes por visibilidade — nunca mais via innerHTML
+  // destrutivo. Isso elimina o crash "Cannot set properties of null" em re-renders e garante
+  // que, sem previsão válida, NENHUM valor de previsão fique visível (Gap, Race Pace, Sub-X).
+  const heroEmptyEl = document.getElementById('race-hero-empty');
+  if(heroRace)     heroRace.style.display     = hasRacePrediction ? '' : 'none';
+  if(heroEmptyEl)  heroEmptyEl.style.display  = hasRacePrediction ? 'none' : '';
 
-  // Injetar banner de dados insuficientes acima das zonas se necessário
+  // v0.9.2.2 (complementar): Opção A — sem dados mínimos, a seção "Zonas de
+  // treino" inteira desaparece (título + Z1-Z4), sobrando só o banner
+  // explicando o que falta. Antes, as zonas genéricas ficavam sempre visíveis
+  // com paces fixos, contradizendo o "Precisamos de mais dados" do hero.
+  const zoneReadiness = getZoneReadiness();
+  const zonesTitleEl   = document.getElementById('race-zones-title');
+  const zonesGenericEl = document.getElementById('race-zones-generic');
+  const zonesGeneric2El= document.getElementById('race-zones-generic-2');
+  const showGenericZones = zoneReadiness.hasMinimum;
+  if(zonesTitleEl)    zonesTitleEl.style.display    = showGenericZones ? '' : 'none';
+  if(zonesGenericEl)  zonesGenericEl.style.display  = showGenericZones ? '' : 'none';
+  if(zonesGeneric2El) zonesGeneric2El.style.display = showGenericZones ? '' : 'none';
+
+  // Injetar banner de dados insuficientes acima das zonas (ou no lugar delas) se necessário
   const zoneDataBannerId = 'race-zone-data-banner';
   let existingBanner = document.getElementById(zoneDataBannerId);
   if(!existingBanner) {
     existingBanner = document.createElement('div');
     existingBanner.id = zoneDataBannerId;
-    const zonesTitle = document.querySelector('#sec-race [style*="font-size:13px"][style*="font-weight:700"]:not(#race-source-title):not(#race-history-title)');
+    const zonesTitle = document.getElementById('race-zones-title');
     if(zonesTitle) zonesTitle.parentNode.insertBefore(existingBanner, zonesTitle);
   }
   if(!zoneReadiness.hasMinimum) {
+    // v0.9.2.2 (complementar): antes esse banner dizia "zonas estimadas" enquanto
+    // as zonas ficavam visíveis com paces fixos — agora as zonas estão ocultas
+    // (Opção A), então o texto reflete isso: nada é mostrado até haver dados.
     existingBanner.innerHTML = `
       <div style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7">
-        🔒 <strong style="color:var(--text2)">Zonas estimadas</strong> — baseadas em parâmetros genéricos.<br>
-        Para zonas personalizadas, faltam: <strong style="color:var(--orange)">${zoneReadiness.missing.join(' e ')}</strong>.<br>
-        <span style="color:var(--text3)">As previsões serão recalculadas automaticamente.</span>
+        🔒 <strong style="color:var(--text2)">Zonas de treino ainda não disponíveis</strong><br>
+        Faltam: <strong style="color:var(--orange)">${zoneReadiness.missing.join(' e ')}</strong>.<br>
+        <span style="color:var(--text3)">As zonas aparecem automaticamente assim que houver dados suficientes.</span>
       </div>`;
   } else {
     existingBanner.innerHTML = `
@@ -4937,6 +4975,14 @@ async function firebaseLogout() {
   if(!window._fbAuth) return;
   if(!confirm('Sair da conta? Seus dados locais são mantidos.')) return;
   try {
+    // v0.9.2.2 (P0): garante que qualquer alteração local pendente (ex: semana
+    // recém-planejada) seja enviada à nuvem ANTES do logout. Sem isso, save()
+    // dispara o upload em background sem esperar — se o logout acontecer antes
+    // do upload terminar, o próximo login baixava uma versão antiga da nuvem
+    // e o planejamento "desaparecia".
+    setSyncStatus('syncing');
+    await uploadToCloud();
+
     const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     await signOut(window._fbAuth);
     state.user = null;
@@ -4984,7 +5030,10 @@ function buildCloudPayload() {
   const rawKey = getGeminiKey();
   return {
     schemaVersion: SCHEMA_VERSION,
-    updatedAt: new Date().toISOString(),
+    // v0.9.2.2 (P0): usa o timestamp da última mudança LOCAL (carimbado em save()),
+    // não um timestamp novo gerado agora — assim o valor enviado reflete a real
+    // idade dos dados, permitindo comparação confiável em downloadFromCloud().
+    updatedAt: state.updatedAt || new Date().toISOString(),
     config: state.config,
     workouts: state.workouts,
     athleteProfile: state.athleteProfile,
@@ -5020,12 +5069,33 @@ async function downloadFromCloud() {
     const snap = await window._fbGetDoc(ref);
     if(snap.exists()) {
       const data = snap.data();
+
+      // v0.9.2.2 (P0) — CAUSA RAIZ do "planejamento desaparece no logout/login":
+      // downloadFromCloud() sobrescrevia state.workouts/config incondicionalmente
+      // com o que estivesse no Firestore, mesmo que o upload do plano recém-criado
+      // ainda não tivesse terminado (save() dispara uploadToCloud() sem esperar).
+      // Agora comparamos updatedAt: só aplicamos os dados da nuvem se eles forem
+      // IGUAIS ou MAIS NOVOS que os dados locais. Se o local for mais novo (upload
+      // pendente/perdido), mantemos o local e reenviamos para a nuvem em vez de
+      // jogar fora o trabalho do usuário.
+      const cloudUpdatedAt = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+      const localUpdatedAt = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
+      const cloudIsNewerOrEqual = cloudUpdatedAt >= localUpdatedAt;
+
+      if(!cloudIsNewerOrEqual) {
+        console.warn('v0.9.2.2: dados locais são mais recentes que a nuvem — mantendo local e re-sincronizando.', {localUpdatedAt: state.updatedAt, cloudUpdatedAt: data.updatedAt});
+        setSyncStatus('synced');
+        uploadToCloud().catch(()=>{}); // corrige o doc na nuvem com a versão local correta
+        return;
+      }
+
       if(data.config)         state.config         = { ...state.config,         ...data.config         };
       if(data.workouts)       state.workouts       = data.workouts;
       if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
       if(data.chatHistory)    state.chatHistory    = data.chatHistory;
       if(typeof data.onboardingDone === 'boolean') state.onboardingDone = data.onboardingDone; // v0.9.0
       if(data.aiStrategy)     state.aiStrategy     = data.aiStrategy; // v0.9.2
+      if(data.updatedAt)      state.updatedAt      = data.updatedAt;  // v0.9.2.2: sincroniza o marcador local com a nuvem aplicada
       // Restore Strava config so Client ID appears on new devices
       if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
       // Also restore Client ID to UID-scoped localStorage so Strava functions find it
@@ -5041,7 +5111,7 @@ async function downloadFromCloud() {
           if(typeof loadGeminiKeyField === 'function') loadGeminiKeyField();
         }
       }
-      save(); // persist cloud data to UID-scoped localStorage
+      saveLocalOnly(); // v0.9.2.2: persiste localmente SEM re-disparar upload (já viemos do download)
       renderDashboard(); renderLog(); renderPlanner(); renderChatMsgs();
       // Repopulate Settings fields (Strava CID, athlete profile, config)
       if(typeof loadConfig === 'function') loadConfig();
@@ -5112,11 +5182,22 @@ const _originalSave = save;
 let _testModeActive = false; // v0.9.0: quando true, save() não sincroniza com a nuvem
 
 function save() {
+  // v0.9.2.2 (P0): toda alteração local (planejar semana, registrar treino, etc.)
+  // atualiza este timestamp. É ele que protege os dados locais de serem
+  // sobrescritos por uma versão antiga vinda da nuvem em downloadFromCloud().
+  state.updatedAt = new Date().toISOString();
   localStorage.setItem(getDbKey(), JSON.stringify(state));
   // Background cloud sync — non-blocking, only if logged in, online, and NOT in test mode
   if(state.user && navigator.onLine && !_testModeActive) {
     uploadToCloud().catch(() => {});
   }
+}
+
+// v0.9.2.2 (P0): persiste localmente sem disparar upload — usado depois de um
+// downloadFromCloud() bem-sucedido, já que os dados acabaram de vir da nuvem
+// (re-subir seria um round-trip inútil e poderia, em teoria, recriar a corrida).
+function saveLocalOnly() {
+  localStorage.setItem(getDbKey(), JSON.stringify(state));
 }
 
 // Phase E — Online/offline events
@@ -6240,6 +6321,14 @@ function toggleCustomDay(el) {
 }
 
 // ── Summary ───────────────────────────────────────────────
+// v0.9.2.2 (P1): cache da MESMA estratégia de IA usada no preview e no plano
+// final. Antes, o preview ("Seu Coach está pronto") usava só
+// calcWeekGoalFromProfile() (regra fixa), enquanto finishOnboarding() chamava
+// a IA de verdade — dois cálculos diferentes que podiam divergir bastante
+// (ex: 90km no preview vs 72km no plano real, para a mesma pessoa).
+let _obAiStrategy = null;
+let _obAiStrategyPromise = null;
+
 function renderObSummary() {
   // Collect all before showing summary
   for(let i=1;i<=4;i++) collectObStep(i);
@@ -6247,6 +6336,7 @@ function renderObSummary() {
   const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'};
   const weekKm = calcWeekGoalFromProfile(_obData);
   const longKm = Math.round(weekKm * 0.35);
+  _obAiStrategy = null; // invalida cache anterior — o perfil pode ter mudado desde a última visita a esta tela
 
   document.getElementById('ob-summary').innerHTML = `
     <div class="ob-summary-row">
@@ -6255,7 +6345,7 @@ function renderObSummary() {
     </div>
     <div class="ob-summary-row">
       <span class="ob-summary-key">Volume inicial</span>
-      <span class="ob-summary-val">${weekKm} km / semana</span>
+      <span class="ob-summary-val" id="ob-summary-volume">${weekKm} km / semana</span>
     </div>
     <div class="ob-summary-row">
       <span class="ob-summary-key">Treinos por semana</span>
@@ -6263,13 +6353,43 @@ function renderObSummary() {
     </div>
     <div class="ob-summary-row">
       <span class="ob-summary-key">Longão inicial</span>
-      <span class="ob-summary-val">${longKm} km</span>
+      <span class="ob-summary-val" id="ob-summary-long">${longKm} km</span>
     </div>
     ${hasGeminiKey() ? `<div class="ob-summary-row" style="border-color:rgba(46,232,196,0.2);background:var(--teal-dim)">
       <span class="ob-summary-key" style="color:var(--teal)">✨ Coach IA</span>
-      <span class="ob-summary-val" style="font-size:11px;color:var(--teal)">vai personalizar o plano</span>
+      <span class="ob-summary-val" id="ob-summary-ai-status" style="font-size:11px;color:var(--teal)">calculando sua estratégia...</span>
     </div>` : ''}
   `;
+
+  // v0.9.2.2 (P1): dispara AGORA a mesma chamada de IA que finishOnboarding()
+  // vai usar — e cacheia o resultado. Quando o usuário clicar em avançar,
+  // reaproveitamos esse resultado em vez de gerar uma segunda estratégia
+  // (que poderia divergir). Se a IA ainda não tiver respondido a tempo,
+  // finishOnboarding() simplesmente espera a mesma Promise terminar.
+  if(hasGeminiKey()) {
+    _obAiStrategyPromise = generateStrategyAI({ profile: _obData, weekKm }).then(ai => {
+      _obAiStrategy = ai;
+      if(ai) patchObSummaryWithAI(ai);
+      else {
+        const statusEl = document.getElementById('ob-summary-ai-status');
+        if(statusEl) statusEl.textContent = 'usando estimativa padrão';
+      }
+      return ai;
+    }).catch(() => { _obAiStrategy = null; return null; });
+  } else {
+    _obAiStrategyPromise = Promise.resolve(null);
+  }
+}
+
+// v0.9.2.2 (P1): atualiza o preview com os números REAIS que a IA vai usar no
+// plano final — elimina a divergência entre "Seu Coach está pronto" e o plano gerado.
+function patchObSummaryWithAI(ai) {
+  const volEl = document.getElementById('ob-summary-volume');
+  const longEl = document.getElementById('ob-summary-long');
+  const statusEl = document.getElementById('ob-summary-ai-status');
+  if(volEl)  volEl.innerHTML  = `${ai.weeklyVolume} km / semana <span style="font-size:9px;color:var(--teal);margin-left:4px">✨ IA</span>`;
+  if(longEl) longEl.textContent = `${ai.longRun} km`;
+  if(statusEl) statusEl.textContent = 'estratégia pronta — será usada no seu plano';
 }
 
 // ── Volume calculation from profile ──────────────────────
@@ -6333,7 +6453,15 @@ async function finishOnboarding() {
   let aiPlan = null;
   if(aiAvailable) {
     btn.textContent = '✨ Coach preparando seu plano...';
-    aiPlan = await generateInitialTrainingStrategy(_obData, weekKm);
+    // v0.9.2.2 (P1): reaproveita a MESMA chamada já disparada em renderObSummary()
+    // (e mostrada no preview "Seu Coach está pronto"), em vez de gerar uma segunda
+    // estratégia que poderia divergir. Se por algum motivo não houver promise em
+    // andamento (ex: usuário chegou aqui sem passar pela tela de resumo), cai
+    // para uma chamada nova como fallback — mas isso nunca deveria divergir do
+    // preview, já que usa a mesma função generateInitialTrainingStrategy().
+    aiPlan = _obAiStrategyPromise
+      ? await _obAiStrategyPromise
+      : await generateInitialTrainingStrategy(_obData, weekKm);
   }
 
   // Aplicar volume da IA se disponível; caso contrário usar regras fixas
