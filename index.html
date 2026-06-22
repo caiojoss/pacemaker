@@ -613,6 +613,20 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <span>Status</span>
         <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="openModal('modal-log')">+ Treino</button>
       </div>
+
+      <!-- v0.9.3 (P0): Ciclo de prova — card exibido quando a data da prova passa e
+           o strategyCycle muda para COMPLETED. Ainda não gera plano novo automaticamente,
+           apenas detecta o fim do ciclo e oferece os próximos passos. -->
+      <div id="db-cycle-completed-card" class="card" style="display:none;margin-bottom:12px;border-color:rgba(46,232,196,0.25);background:var(--teal-dim)">
+        <div style="font-size:28px;margin-bottom:6px">🏁</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:var(--teal)">Parabéns pela conclusão do ciclo.</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:14px" id="db-cycle-completed-sub">Sua prova já passou. Hora de fechar esse capítulo.</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" style="flex:1;font-size:11px" onclick="openCycleResultModal()">Registrar resultado</button>
+          <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="startNewCycleGoal()">Criar novo objetivo</button>
+        </div>
+      </div>
+
       <!-- Weekly Report (Fase 5) -->
       <div id="db-weekly-report"></div>
 
@@ -1040,6 +1054,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="strava-last-sync">Nunca sincronizado</div>
         </div>
       </div>
+
+      <!-- v0.9.3 (P1): Strava Connect Foundation — arquitetura/placeholder para a
+           futura sincronização automática (sem CID manual). NÃO substitui o fluxo
+           acima (Client ID manual) — convive com ele até a migração completa. -->
+      <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#FC4C02" opacity="0.6"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
+          <div class="label" style="margin-bottom:0">Strava Connect</div>
+          <div id="strava-connect-v2-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">em breve</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">
+          Sincronização automática, sem precisar de Client ID — só conectar sua conta Strava. Esta é a base que estamos preparando; por enquanto, use a importação manual acima.
+        </div>
+        <button class="btn btn-ghost btn-full" style="font-size:11px;opacity:0.7" onclick="stravaConnectV2Placeholder()">
+          Conectar com Strava (em breve)
+        </button>
+      </div>
+
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <span style="font-size:16px">✨</span>
@@ -1085,12 +1117,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <input type="text" class="form-input" id="cfg-ap-target-time" placeholder="Não definido"/>
         </div>
         <div class="form-group">
-          <label class="form-label">Preferência de musculação</label>
+          <label class="form-label">Treina musculação?</label>
           <select class="form-select" id="cfg-ap-strength-pref">
-            <option value="">Sem preferência</option>
-            <option value="ABC">ABC (Peito/Costas/Pernas)</option>
-            <option value="AB">AB (Superior/Inferior)</option>
-            <option value="PPL">Push / Pull / Legs</option>
+            <option value="off">Não faço musculação</option>
+            <option value="ABC">Sim — ABC (Peito/Costas/Pernas)</option>
+            <option value="ABCD">Sim — ABCD</option>
+            <option value="AB">Sim — Superior/Inferior</option>
+            <option value="PPL">Sim — Push / Pull / Legs</option>
+            <option value="custom">Sim — Personalizado</option>
           </select>
         </div>
         <div class="form-group">
@@ -1312,11 +1346,39 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <button class="modal-close" onclick="closeModal('modal-strava')">×</button>
     </div>
     <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:12px" id="strava-import-subtitle">Selecione os treinos para importar</div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:12px" id="strava-import-actions">
       <button class="btn btn-ghost" style="font-size:11px;flex:1;padding:7px" onclick="stravaSelectAll()">Selecionar novos</button>
       <button class="btn btn-primary" style="font-size:11px;flex:1;padding:7px" onclick="stravaImportSelected()" id="strava-import-btn">Importar selecionados</button>
     </div>
     <div id="strava-activity-list" style="max-height:50vh;overflow-y:auto"></div>
+
+    <!-- v0.9.3 (P1): Importação Inteligente — auditoria pós-importação. Antes, a
+         importação só fechava o modal com um toast genérico ("N importados"),
+         gerando sensação de perda de histórico. Agora mostra exatamente o que
+         foi recuperado antes de fechar. -->
+    <div id="strava-import-summary" style="display:none">
+      <div style="text-align:center;padding:8px 0 4px">
+        <div style="font-size:32px;margin-bottom:10px">✅</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:14px">Importação concluída.</div>
+      </div>
+      <div class="ob-summary-row">
+        <span class="ob-summary-key">Treinos importados</span>
+        <span class="ob-summary-val accent" id="sis-count">0</span>
+      </div>
+      <div class="ob-summary-row">
+        <span class="ob-summary-key">KM recuperados</span>
+        <span class="ob-summary-val" id="sis-km">0 km</span>
+      </div>
+      <div class="ob-summary-row">
+        <span class="ob-summary-key">Longões encontrados</span>
+        <span class="ob-summary-val" id="sis-longoes">0</span>
+      </div>
+      <div class="ob-summary-row">
+        <span class="ob-summary-key">Período coberto</span>
+        <span class="ob-summary-val" id="sis-periodo">--</span>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="closeStravaImportSummary()">Concluir</button>
+    </div>
   </div>
 </div>
 
@@ -1493,6 +1555,11 @@ let state = {
     targetTime: '',
     injuryHistory: '',
     longRunPref: 0,
+    // v0.9.3 (P0): musculação agora é explícita. doesStrength=true é o default
+    // de MIGRAÇÃO (preserva o comportamento legado para perfis já existentes
+    // que nunca responderam a essa pergunta). Usuários novos respondem no
+    // onboarding; usuários antigos podem mudar em Configurações.
+    doesStrength: true,
     strengthPref: '',
     notes: '',
     updatedAt: ''
@@ -1501,11 +1568,30 @@ let state = {
   onboardingDone: false, // v0.9.0: tracks if user completed onboarding flow
   // v0.9.2: AI-generated initial strategy — the single source of truth for both Coach and Planner
   aiStrategy: null, // { weeklyVolume, sessions, longRun, rationale, generatedAt, model }
+  // v0.9.3 (P0): Estratégia Viva — preparação de arquitetura, SEM regeneração
+  // automática ainda. Hoje só rastreia o ciclo atual (objetivo/prova) e detecta
+  // quando ele termina (status COMPLETED). A lógica de regenerar automaticamente
+  // fica para uma versão futura.
+  strategyCycle: null, // { goalType, targetTime, raceDate, generatedAt, status: 'ACTIVE'|'EXPIRED'|'COMPLETED' }
   stravaConfig: {
     clientId:  '',    // safe to sync — public value
     connected: false, // whether Strava is linked
     athlete:   {}     // { id, firstname, lastname, profile } — safe metadata
     // access_token, refresh_token, client_secret → device-local only (never synced)
+  },
+  // v0.9.3 (P1): Strava Connect Foundation — arquitetura para a futura sincronização
+  // automática (OAuth completo via app própria do Pacemaker, sem o usuário precisar
+  // criar um Client ID). Ainda não tem OAuth implementado — só o estado e a UI.
+  stravaConnection: {
+    connected: false,
+    athleteId: null,
+    lastSync: null
+  },
+  // v0.9.3 (P2): Exportação para Google Calendar — só a estrutura, ainda sem
+  // integração real (continua sendo .ics manual por enquanto).
+  calendarExport: {
+    connected: false,
+    lastExport: null
   }
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
@@ -1534,6 +1620,32 @@ function load() {
   const uidKey = state.user?.uid ? `pacemaker_${state.user.uid}` : null;
   const raw = (uidKey && localStorage.getItem(uidKey)) || localStorage.getItem(DB_KEY_LEGACY);
   if(raw) { try { state = {...state, ...JSON.parse(raw)}; } catch(e){} }
+
+  // v0.9.3 (P0) — MIGRAÇÃO: o merge acima é raso (shallow spread), então se o
+  // dado salvo já tinha um objeto athleteProfile (perfis antigos, pré-v0.9.3),
+  // ele substitui o default por completo — inclusive removendo doesStrength
+  // (que nem existia antes). Sem isso, state.athleteProfile.doesStrength viraria
+  // undefined para todo usuário existente, e o Planner trataria isso como "sem
+  // musculação" — uma mudança de comportamento silenciosa que não foi pedida.
+  // Backfill explícito: preserva o comportamento legado (musculação assumida).
+  if(state.athleteProfile && state.athleteProfile.doesStrength === undefined) {
+    state.athleteProfile.doesStrength = true;
+  }
+
+  // v0.9.3 (P0) — MIGRAÇÃO: backfill de strategyCycle para usuários que já
+  // completaram o onboarding em versões anteriores (a estrutura não existia).
+  // Sem isso, checkStrategyCycleCompletion() nunca teria nada para verificar
+  // em contas já existentes — a detecção de fim de ciclo só funcionaria para
+  // quem fizer onboarding a partir de agora.
+  if(!state.strategyCycle && state.onboardingDone) {
+    state.strategyCycle = {
+      goalType: state.config.goalType || '',
+      targetTime: state.athleteProfile?.targetTime || '',
+      raceDate: state.config.raceDate || '',
+      generatedAt: state.athleteProfile?.updatedAt || new Date().toISOString(),
+      status: 'ACTIVE'
+    };
+  }
 }
 
 // ==================== NAV ====================
@@ -1817,8 +1929,12 @@ function nextSuggestedWorkout() {
 
   if(!isWork && daysSinceLastLong >= 6) return {title:'Longão Z2',detail:`${Math.min(22,Math.round((weekGoal-weekKm)*0.5)+14)}km · Pace 6:20–6:40 · FC <145bpm`,type:'long'};
   if(!isWork) return {title:'Progressivo / Tiros',detail:'8–14km · Z2 + 4x1km no pace alvo',type:'progressivo'};
+  // v0.9.3 (P0): antes esta sugestão assumia musculação em TODA manhã de trabalho,
+  // mesmo para corredores que nunca disseram que treinam força. Agora respeita
+  // athleteProfile.doesStrength (default true só para perfis legados/migrados).
+  const doesStrength = state.athleteProfile?.doesStrength !== false;
   const hasMorning = state.workouts.find(w=>w.date===tStr&&w.type==='strength');
-  if(isWork && !hasMorning) return {title:'Musculação (manhã)',detail:'40 min · Foco em glúteos, core e estabilidade',type:'strength'};
+  if(isWork && doesStrength && !hasMorning) return {title:'Musculação (manhã)',detail:'40 min · Foco em glúteos, core e estabilidade',type:'strength'};
   return {title:'Corrida Z2',detail:'8–10km fácil · FC <140bpm',type:'z2'};
 }
 
@@ -2223,6 +2339,7 @@ function renderPlannerSuggestion() {
           <button class="overflow-btn" onclick="toggleOverflow('overflow-current',event)" aria-label="Opções">⋮</button>
           <div class="overflow-menu" id="overflow-current">
             <button class="overflow-item" onclick="exportCurrentWeek();closeOverflow('overflow-current')">📅 Exportar semana atual</button>
+            <button class="overflow-item" onclick="exportToGoogleCalendarPlaceholder();closeOverflow('overflow-current')">🗓️ Exportar p/ Google Calendar (em breve)</button>
             <button class="overflow-item danger" onclick="confirmClearCurrentWeek();closeOverflow('overflow-current')">🧹 Limpar semana planejada</button>
           </div>
         </div>` : ''}
@@ -2287,6 +2404,7 @@ function renderNextWeekCard() {
           <button class="overflow-btn" onclick="toggleOverflow('overflow-next',event)" aria-label="Opções">⋮</button>
           <div class="overflow-menu" id="overflow-next">
             <button class="overflow-item" onclick="exportNextWeekToCalendar();closeOverflow('overflow-next')">📅 Exportar .ics</button>
+            <button class="overflow-item" onclick="exportToGoogleCalendarPlaceholder();closeOverflow('overflow-next')">🗓️ Exportar p/ Google Calendar (em breve)</button>
             <button class="overflow-item danger" onclick="confirmClearNextWeek();closeOverflow('overflow-next')">🧹 Limpar plano</button>
           </div>
         </div>
@@ -2742,8 +2860,27 @@ function renderFitnessEvolution() {
 // ════════════════════════════════════════════════════════════════════════
 const AI_BACKEND_MODE = 'LOCAL_GEMINI';
 
+// ════════════════════════════════════════════════════════════════════════
+// v0.9.3 (P1) — TESTER_MODE: facilita os testes dos 5 usuários iniciais sem
+// exigir que cada um configure sua própria Gemini API Key. Projeto continua
+// em Firebase Spark — SEM Cloud Functions, SEM backend, SEM Blaze. A key
+// fica embutida no app e é usada apenas como fallback (a key do próprio
+// usuário, se configurada, sempre tem prioridade).
+//
+// ⚠️ REMOVER ANTES DA VERSÃO PÚBLICA — uma key embutida no bundle do cliente
+// é visível a qualquer pessoa que inspecione o código-fonte. Isso só é
+// aceitável temporariamente, para um grupo pequeno e controlado de testers.
+// ════════════════════════════════════════════════════════════════════════
+const TESTER_MODE = true; // ⚠️ Remover antes da versão pública.
+const _TESTER_GEMINI_KEY = 'AQ.Ab8RN6IKTiM6PZq3syvE0rx9QXnfrhyJJOu3HUGH1iUnL3c9tg'; // ⚠️ Cole a key de teste aqui. Remover antes da versão pública.
+
 const GEMINI_KEY = 'pacemaker_gemini_key';
-function getGeminiKey() { return localStorage.getItem(GEMINI_KEY)||''; }
+function getGeminiKey() {
+  const own = localStorage.getItem(GEMINI_KEY) || '';
+  if(own) return own; // key do próprio usuário sempre tem prioridade
+  if(TESTER_MODE && _TESTER_GEMINI_KEY) return _TESTER_GEMINI_KEY; // ⚠️ Remover antes da versão pública.
+  return '';
+}
 function hasGeminiKey() { return !!getGeminiKey(); }
 
 function toggleGeminiKeyVisibility() {
@@ -2752,7 +2889,7 @@ function toggleGeminiKeyVisibility() {
 }
 
 function loadGeminiKeyField() {
-  const k = getGeminiKey();
+  const k = localStorage.getItem(GEMINI_KEY) || ''; // v0.9.3: só preenche o campo com a key PRÓPRIA do usuário, nunca com a embutida de teste
   const el = document.getElementById('cfg-gemini-key');
   if(el && k) el.value = k;
 
@@ -2764,6 +2901,16 @@ function loadGeminiKeyField() {
   const note = document.getElementById('advanced-gemini-note');
   const keyLabel = document.getElementById('gemini-key-label');
   const section = document.getElementById('advanced-gemini-section');
+
+  // v0.9.3 (P1): TESTER_MODE — não expõe nenhuma UI de configuração de key.
+  // O Coach IA já funciona via key embutida; o card vira só um indicador de status.
+  if(TESTER_MODE) {
+    if(intro) intro.textContent = 'O Coach IA já está ativo para os testers — nenhuma configuração necessária.';
+    if(toggleBtn) toggleBtn.style.display = 'none';
+    if(section) section.style.display = 'none';
+    updateGeminiBadge();
+    return;
+  }
 
   if(AI_BACKEND_MODE === 'LOCAL_GEMINI') {
     if(intro) intro.textContent = 'O Coach IA roda direto no seu navegador com a Gemini API — configure sua key gratuita para ativar.';
@@ -2801,10 +2948,14 @@ function updateGeminiBadge() {
   // v0.9.2.1-LOCAL: "nativo sem key" só existe no modo FIREBASE_BACKEND.
   // No modo LOCAL_GEMINI (ativo agora), o Coach depende da key configurada.
   const nativeAvailable = AI_BACKEND_MODE === 'FIREBASE_BACKEND' && !!(state.user && window._pmCallCoachChat);
+  // v0.9.3 (P1): distingue "usuário configurou a própria key" de "TESTER_MODE
+  // está usando a key embutida" — sem expor esse detalhe na UI (a key embutida
+  // nunca aparece, só o resultado: Coach IA ativo).
+  const hasOwnKey = !!localStorage.getItem(GEMINI_KEY);
   const aiActive = nativeAvailable || hasGeminiKey();
   if(aiActive) {
     if(badge) {
-      badge.textContent = hasGeminiKey() ? '✓ key ativa' : '✓ nativo (incluso)';
+      badge.textContent = hasOwnKey ? '✓ key ativa' : '✓ ativo';
       badge.style.color='var(--teal)'; badge.style.borderColor='rgba(46,232,196,0.3)'; badge.style.background='var(--teal-dim)';
     }
     if(coachBadge) { coachBadge.textContent='✨ Coach IA'; coachBadge.style.color='var(--teal)'; coachBadge.style.background='var(--teal-dim)'; coachBadge.style.borderColor='rgba(46,232,196,0.3)'; }
@@ -2813,7 +2964,10 @@ function updateGeminiBadge() {
     if(coachBadge) { coachBadge.textContent='offline'; coachBadge.style.color='var(--accent)'; coachBadge.style.background='var(--accent-dim)'; coachBadge.style.borderColor='rgba(232,245,90,0.3)'; }
   }
   if(nativeStatusEl) {
-    if(hasGeminiKey()) {
+    if(TESTER_MODE) {
+      nativeStatusEl.textContent = '✓ Coach IA ativo (modo testers).';
+      nativeStatusEl.style.color = 'var(--teal)';
+    } else if(hasOwnKey) {
       nativeStatusEl.textContent = '🔑 Coach IA ativo com sua Gemini API Key.';
       nativeStatusEl.style.color = 'var(--teal)';
     } else if(nativeAvailable) {
@@ -2959,7 +3113,7 @@ PERFIL DO ATLETA:
 - Objetivo: ${goalLabel}
 ${raceLine}
 - Rotina de trabalho: ${scaleDesc}
-- Preferência de musculação: ${p.strengthPref || 'sem preferência'}
+- Musculação: ${p.doesStrength === false ? 'NÃO treina musculação — nunca sugira nem assuma treino de força para este atleta' : (p.strengthPref ? `treina musculação, divisão ${p.strengthPref}` : 'treina musculação, sem divisão definida')}
 - Longão máximo preferido: ${p.longRunPref ? p.longRunPref+'km' : 'automático (sem limite definido)'}
 - Lesões/Histórico: ${p.injuryHistory || 'não informado'}
 - Observações do atleta: ${p.notes || 'nenhuma observação'}
@@ -3563,17 +3717,35 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   });
 
   // 3. Work days (Z2 portions)
+  // v0.9.3 (P0): musculação só é assumida se o atleta EXPLICITAMENTE optou por ela.
+  // Antes, qualquer dia de trabalho sem corrida planejada virava "Musculação X" —
+  // mesmo para corredores que nunca disseram que treinam força.
+  const doesStrength = ctx.profile?.doesStrength !== false; // default true preserva perfis legados (ver migração em load())
   const workRunKms = smartWorkDayDistribution(freeWorkDays.length, remaining, workrunKm, fatigueMultiplier);
   freeWorkDays.forEach((d,i)=>{
-    const session=STRENGTH_SESSIONS[strengthRotIdx%3]; strengthRotIdx++;
+    const session = doesStrength ? STRENGTH_SESSIONS[strengthRotIdx%3] : null;
+    if(doesStrength) strengthRotIdx++;
     const km=workRunKms[i]||0;
     if(workrunMode==='none'||km===0) {
-      d.workout={type:'strength',title:`Musculação ${session.label.split('—')[0].trim()}`,
-        dist:0,pace:'',desc:session.label,steps:session.steps};
-    } else {
+      if(doesStrength) {
+        d.workout={type:'strength',title:`Musculação ${session.label.split('—')[0].trim()}`,
+          dist:0,pace:'',desc:session.label,steps:session.steps};
+      } else {
+        // Sem musculação: dia de trabalho sem corrida planejada vira descanso ativo leve,
+        // não fica "vazio" silenciosamente nem assume um treino que o atleta não pediu.
+        d.workout={type:'recovery',title:'Descanso',dist:0,pace:'',
+          desc:'Dia de trabalho — sem treino de força ou corrida hoje.',
+          steps:[{icon:'🛌',text:'Recuperação',detail:'Sem musculação configurada — ajuste em Configurações se quiser incluir.'}]};
+      }
+    } else if(doesStrength) {
       d.workout={type:'z2',title:`Musculação + Z2 ${km}km`,dist:km,pace:'6:20–6:40',
         desc:`Manhã: ${session.label} · Noite: ${km}km Z2`,
         steps:[{icon:'💪',text:`Musculação — ${session.label}`,detail:'40min · manhã'},{icon:'🏃',text:`Z2 — ${km}km`,detail:`pace 6:20–6:40 · FC <140bpm · noite`}]};
+      remaining -= km;
+    } else {
+      d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:'6:20–6:40',
+        desc:`${km}km Z2 · pace 6:20–6:40 · FC <140bpm`,
+        steps:[{icon:'🏃',text:`${km}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}]};
       remaining -= km;
     }
   });
@@ -4324,17 +4496,24 @@ function loadConfig() {
   const apNotes = document.getElementById('cfg-ap-notes');
   if(apGoal) apGoal.value = p.goal||'';
   if(apTarget) apTarget.value = p.targetTime||'';
-  if(apStrength) apStrength.value = p.strengthPref||'';
+  // v0.9.3 (P0): "off" representa doesStrength===false explicitamente —
+  // antes uma string vazia era ambígua ("sem preferência" ≠ "não treina").
+  if(apStrength) apStrength.value = (p.doesStrength === false) ? 'off' : (p.strengthPref || 'ABC');
   if(apLong) apLong.value = p.longRunPref||'';
   if(apInjuries) apInjuries.value = p.injuryHistory||'';
   if(apNotes) apNotes.value = p.notes||'';
 }
 
 function saveAthleteProfile() {
+  // v0.9.3 (P0): "off" no dropdown significa doesStrength=false, strengthPref=null.
+  // Qualquer outro valor significa doesStrength=true com aquela divisão específica.
+  const strengthVal = document.getElementById('cfg-ap-strength-pref')?.value || 'ABC';
+  const doesStrength = strengthVal !== 'off';
   state.athleteProfile = {
     goal:          document.getElementById('cfg-ap-goal')?.value||'',
     targetTime:    document.getElementById('cfg-ap-target-time')?.value||'',
-    strengthPref:  document.getElementById('cfg-ap-strength-pref')?.value||'',
+    doesStrength,
+    strengthPref:  doesStrength ? strengthVal : null,
     longRunPref:   parseInt(document.getElementById('cfg-ap-longrun-pref')?.value)||0,
     injuryHistory: document.getElementById('cfg-ap-injuries')?.value||'',
     notes:         document.getElementById('cfg-ap-notes')?.value||'',
@@ -4471,6 +4650,15 @@ function stravaDisconnect() {
   save(); // propagates disconnect to Firestore
   updateStravaBadge();
   showToast('Strava desconectado');
+}
+
+// v0.9.3 (P1, placeholder): ponto de integração para a futura sincronização
+// automática via Strava Connect (OAuth completo, sem Client ID manual).
+// state.stravaConnection já existe e está pronto para ser preenchido quando
+// o fluxo de OAuth completo for implementado (provavelmente v0.9.4+, junto
+// com um backend ou redirect URI fixo da própria Pacemaker).
+function stravaConnectV2Placeholder() {
+  showToast('Strava Connect (sincronização automática) chega em breve ⚡ — use a importação manual por enquanto.');
 }
 
 function showStravaStatus(type, msg) {
@@ -4725,6 +4913,7 @@ function stravaSelectAll() {
 function stravaImportSelected() {
   if(stravaSelectedIds.size===0) { showToast('Selecione ao menos 1 atividade'); return; }
   let count=0;
+  const importedWorkouts = []; // v0.9.3 (P1): rastreados para a auditoria pós-importação
   stravaSelectedIds.forEach(idStr=>{
     const a = stravaActivitiesCache.find(x=>String(x.id)===idStr);
     if(!a) return;
@@ -4749,16 +4938,68 @@ function stravaImportSelected() {
     // Avoid duplicates
     if(!state.workouts.find(x=>x.stravaId===w.stravaId)) {
       state.workouts.unshift(w);
+      importedWorkouts.push(w);
       count++;
     }
   });
   // Sort by date desc
   state.workouts.sort((a,b)=>b.date.localeCompare(a.date));
   save();
-  closeModal('modal-strava');
-  showToast(`✓ ${count} treino(s) importado(s)!`);
   renderDashboard(); renderLog();
   stravaSelectedIds.clear();
+
+  // v0.9.3 (P1): Importação Inteligente — mostra exatamente o que foi recuperado,
+  // em vez de só fechar o modal com um toast genérico. Reduz a sensação de
+  // "perda de histórico" relatada no uso real.
+  showStravaImportSummary(importedWorkouts);
+}
+
+// v0.9.3 (P1): auditoria pós-importação — treinos, km, longões, período coberto.
+function showStravaImportSummary(importedWorkouts) {
+  const actionsRow = document.getElementById('strava-import-actions');
+  const list = document.getElementById('strava-activity-list');
+  const summary = document.getElementById('strava-import-summary');
+  if(actionsRow) actionsRow.style.display = 'none';
+  if(list) list.style.display = 'none';
+  if(!summary) { closeModal('modal-strava'); showToast(`✓ ${importedWorkouts.length} treino(s) importado(s)!`); return; }
+
+  const count = importedWorkouts.length;
+  const totalKm = importedWorkouts.reduce((a,w)=>a+(w.dist||0),0);
+  const longoes = importedWorkouts.filter(w=>w.type==='long' || w.dist>=15).length;
+  let periodoStr = '--';
+  if(count > 0) {
+    const dates = importedWorkouts.map(w=>w.date).sort();
+    const oldest = dates[0], newest = dates[dates.length-1];
+    periodoStr = oldest === newest ? formatDate(oldest) : `${formatDate(oldest)} – ${formatDate(newest)}`;
+  }
+
+  document.getElementById('sis-count').textContent    = `${count} treino${count===1?'':'s'}`;
+  document.getElementById('sis-km').textContent        = `${totalKm.toFixed(1)} km`;
+  document.getElementById('sis-longoes').textContent   = longoes===1 ? '1 longão' : `${longoes} longões`;
+  document.getElementById('sis-periodo').textContent   = periodoStr;
+  summary.style.display = 'block';
+}
+
+// v0.9.3 (P1): fecha o modal e restaura o estado padrão (lista de atividades)
+// para a próxima vez que o usuário abrir a importação.
+function closeStravaImportSummary() {
+  closeModal('modal-strava');
+  const actionsRow = document.getElementById('strava-import-actions');
+  const list = document.getElementById('strava-activity-list');
+  const summary = document.getElementById('strava-import-summary');
+  if(actionsRow) actionsRow.style.display = 'flex';
+  if(list) list.style.display = 'block';
+  if(summary) summary.style.display = 'none';
+}
+
+// ==================== v0.9.3 (P2) — GOOGLE CALENDAR EXPORT (FOUNDATION) ====================
+// Objetivo: reduzir a fricção do download manual de .ics. Esta é só a base —
+// estrutura de estado, botão e fluxo preparado. A integração real com a
+// Google Calendar API (OAuth + criação de eventos) fica para uma versão futura.
+// state.calendarExport já existe e está pronto para ser preenchido quando o
+// fluxo completo for implementado.
+function exportToGoogleCalendarPlaceholder() {
+  showToast('Exportar para o Google Calendar chega em breve 🗓️ — use o .ics por enquanto.');
 }
 
 // ==================== ICS EXPORT ====================
@@ -5717,10 +5958,52 @@ function initDesktopUI() {
 function renderDashboard() {
   renderDashboardBase();
   updateSidebarCountdown();
+  renderCycleCompletedCard(); // v0.9.3 (P0): Ciclo de Prova
   if(window.matchMedia('(min-width:900px)').matches) {
     applyDashboardDesktopGrid();
     updateRightPanel();
   }
+}
+
+// ==================== v0.9.3 (P0) — CICLO DE PROVA ====================
+// Detecta quando a data da prova passou e marca o ciclo como COMPLETED.
+// Ainda NÃO gera plano novo automaticamente — apenas detecta o fim do ciclo
+// e oferece os próximos passos (registrar resultado / criar novo objetivo).
+function checkStrategyCycleCompletion() {
+  const sc = state.strategyCycle;
+  if(!sc || sc.status !== 'ACTIVE') return false;
+  if(!sc.raceDate) return false; // metas de saúde/condicionamento não têm prova — nunca "completam" por data
+  if(today() > sc.raceDate) {
+    sc.status = 'COMPLETED';
+    save();
+    return true;
+  }
+  return false;
+}
+
+function renderCycleCompletedCard() {
+  checkStrategyCycleCompletion();
+  const card = document.getElementById('db-cycle-completed-card');
+  if(!card) return;
+  const isCompleted = state.strategyCycle?.status === 'COMPLETED';
+  card.style.display = isCompleted ? '' : 'none';
+  if(isCompleted) {
+    const sub = document.getElementById('db-cycle-completed-sub');
+    const raceName = state.config.raceName || 'sua prova';
+    const raceDate = state.strategyCycle.raceDate ? formatDate(state.strategyCycle.raceDate) : '';
+    if(sub) sub.textContent = raceDate
+      ? `${raceName} foi em ${raceDate}. Hora de fechar esse capítulo e definir o próximo passo.`
+      : `${raceName} ficou no passado. Hora de fechar esse capítulo e definir o próximo passo.`;
+  }
+}
+
+// v0.9.3 (P1, stub): ainda não gera plano novo — apenas detecção de fim de
+// ciclo, conforme escopo desta versão. Os fluxos completos ficam para v0.9.4.
+function openCycleResultModal() {
+  showToast('Registro de resultado chega em breve 🏅');
+}
+function startNewCycleGoal() {
+  showToast('Criação de novo objetivo chega em breve 🎯');
 }
 
 function applyDashboardDesktopGrid() {
@@ -6094,6 +6377,25 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
           <div class="ob-chip" data-val="0" onclick="toggleCustomDay(this)">Dom</div>
         </div>
       </div>
+
+      <!-- v0.9.3 (P0): Musculação opcional — antes o onboarding NUNCA perguntava isso,
+           e o Planner assumia rotação ABC mesmo para quem só corre. Agora é explícito. -->
+      <div class="ob-field" style="margin-top:20px">
+        <div class="ob-label">Treina musculação?</div>
+        <div class="ob-chips" id="ob-strength-yn-chips">
+          <div class="ob-chip" data-val="no" onclick="selectStrengthYn(this)">Não faço musculação</div>
+          <div class="ob-chip sel" data-val="yes" onclick="selectStrengthYn(this)">Quero incluir musculação</div>
+        </div>
+      </div>
+      <div class="ob-field" id="ob-strength-split-field" style="margin-top:14px">
+        <div class="ob-label">Qual divisão você prefere?</div>
+        <div class="ob-chips" id="ob-strength-split-chips">
+          <div class="ob-chip sel" data-val="ABC" onclick="selectChip('ob-strength-split-chips', this)">ABC</div>
+          <div class="ob-chip" data-val="ABCD" onclick="selectChip('ob-strength-split-chips', this)">ABCD</div>
+          <div class="ob-chip" data-val="AB" onclick="selectChip('ob-strength-split-chips', this)">Superior/Inferior</div>
+          <div class="ob-chip" data-val="custom" onclick="selectChip('ob-strength-split-chips', this)">Personalizado</div>
+        </div>
+      </div>
     </div>
 
     <!-- STEP 5: Summary -->
@@ -6134,7 +6436,8 @@ const _obData = {
   name:'', weight:0, height:0,
   level:'intermediate', bestTime:'',
   raceType:'marathon', targetTime:'', raceDate:'',
-  daysPerWeek:4, scale:'5x2', scaleStart:'', customWorkDays:[]
+  daysPerWeek:4, scale:'5x2', scaleStart:'', customWorkDays:[],
+  doesStrength:true, strengthSplit:'ABC' // v0.9.3 (P0): musculação agora é explícita, não assumida
 };
 
 // ── Entry point ───────────────────────────────────────────
@@ -6265,6 +6568,15 @@ function collectObStep(step) {
     // Dias personalizados
     const customDays = Array.from(document.querySelectorAll('#ob-custom-days-chips .ob-chip.sel')).map(c=>c.dataset.val);
     _obData.customWorkDays = customDays;
+    // v0.9.3 (P0): Musculação opcional — explícito, não assumido
+    const ynChip = document.querySelector('#ob-strength-yn-chips .ob-chip.sel');
+    _obData.doesStrength = ynChip ? ynChip.dataset.val === 'yes' : true;
+    if(_obData.doesStrength) {
+      const splitChip = document.querySelector('#ob-strength-split-chips .ob-chip.sel');
+      _obData.strengthSplit = splitChip ? splitChip.dataset.val : 'ABC';
+    } else {
+      _obData.strengthSplit = null;
+    }
   }
 }
 
@@ -6318,6 +6630,15 @@ function selectScaleChip(el) {
 
 function toggleCustomDay(el) {
   el.classList.toggle('sel');
+}
+
+// v0.9.3 (P0): Musculação opcional — alterna a visibilidade do campo de divisão
+function selectStrengthYn(el) {
+  document.querySelectorAll('#ob-strength-yn-chips .ob-chip').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+  _obData.doesStrength = el.dataset.val === 'yes';
+  const splitField = document.getElementById('ob-strength-split-field');
+  if(splitField) splitField.style.display = _obData.doesStrength ? 'block' : 'none';
 }
 
 // ── Summary ───────────────────────────────────────────────
@@ -6441,6 +6762,12 @@ async function finishOnboarding() {
   // Update athleteProfile
   state.athleteProfile.goal       = _obData.targetTime || ('Completar ' + (raceNames[_obData.raceType]||'Maratona'));
   state.athleteProfile.targetTime = _obData.targetTime;
+  // v0.9.3 (P0): musculação agora é explícita. Antes, athleteProfile.strengthPref
+  // ficava vazio ('') por padrão e o Planner/Coach tratavam isso como "sem
+  // preferência" (mas ainda assumiam ABC). Agora: doesStrength=false → strengthPref
+  // null, e Planner/Coach checam doesStrength antes de sugerir qualquer musculação.
+  state.athleteProfile.doesStrength = _obData.doesStrength;
+  state.athleteProfile.strengthPref = _obData.doesStrength ? (_obData.strengthSplit || 'ABC') : null;
   state.athleteProfile.updatedAt  = new Date().toISOString();
 
   // Mark onboarding done
@@ -6481,6 +6808,17 @@ async function finishOnboarding() {
 
   // Generate first week plan (usa sessionBreakdown da IA ou fallback a regras)
   const firstPlan = generateFirstWeekPlan(_obData, state.config.weekGoal, aiPlan);
+
+  // v0.9.3 (P0): cria o strategyCycle — estrutura para a futura Estratégia Viva.
+  // Ainda não regenera nada automaticamente; só registra o ciclo atual para que
+  // checkStrategyCycleCompletion() possa detectar quando ele termina.
+  state.strategyCycle = {
+    goalType: state.config.goalType || _obData.raceType,
+    targetTime: state.athleteProfile.targetTime || '',
+    raceDate: state.config.raceDate || '',
+    generatedAt: new Date().toISOString(),
+    status: 'ACTIVE'
+  };
 
   // Save everything
   save();
