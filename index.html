@@ -85,8 +85,13 @@ onAuthStateChanged(fbAuth, user => {
   if(typeof renderAuthCard === 'function') renderAuthCard();
   if(typeof renderSyncIndicator === 'function') renderSyncIndicator();
   if(typeof updateGeminiBadge === 'function') updateGeminiBadge(); // v0.9.2.1: nativo depende do login
-  // v0.9.0: check onboarding after auth state resolves (cloud data loads first)
-  if(user && typeof window._pmCheckOnboardingAfterAuth === 'function') {
+  // v0.9.3.1 (P0): checar onboarding SEMPRE, com ou sem login. Antes, esta
+  // chamada só acontecia quando `user` era truthy — então uma sessão anônima
+  // (sem login, sem dados locais) nunca disparava o onboarding e caía direto
+  // no Dashboard vazio. onAuthStateChanged sempre dispara pelo menos uma vez
+  // (com user=null para sessões anônimas), então isso é seguro como gatilho
+  // único de inicialização.
+  if(typeof window._pmCheckOnboardingAfterAuth === 'function') {
     window._pmCheckOnboardingAfterAuth();
   }
 });
@@ -2570,6 +2575,45 @@ function getZoneReadiness() {
 function renderRaceIQ() {
   const isHealthGoal = state.config.goalType === 'health';
 
+  // v0.9.3.1 (P0): movido para o TOPO da função — antes vivia depois do branch
+  // de isHealthGoal, que faz `return` antecipado para metas de saúde. Como a
+  // maioria dos novos testers escolhe "Saúde e Condicionamento" no onboarding,
+  // essa lógica NUNCA executava para eles: as zonas Z1-Z4 ficavam sempre
+  // visíveis com paces fixos, mesmo sem nenhum dado. Z1-Z4 são genéricas (não
+  // dependem do tipo de objetivo), então essa checagem deve correr sempre,
+  // antes de qualquer return condicional por tipo de meta.
+  const zoneReadiness = getZoneReadiness();
+  const zonesTitleEl   = document.getElementById('race-zones-title');
+  const zonesGenericEl = document.getElementById('race-zones-generic');
+  const zonesGeneric2El= document.getElementById('race-zones-generic-2');
+  const showGenericZones = zoneReadiness.hasMinimum;
+  if(zonesTitleEl)    zonesTitleEl.style.display    = showGenericZones ? '' : 'none';
+  if(zonesGenericEl)  zonesGenericEl.style.display  = showGenericZones ? '' : 'none';
+  if(zonesGeneric2El) zonesGeneric2El.style.display = showGenericZones ? '' : 'none';
+
+  // Injetar banner de dados insuficientes acima das zonas (ou no lugar delas) se necessário
+  const zoneDataBannerId = 'race-zone-data-banner';
+  let existingBanner = document.getElementById(zoneDataBannerId);
+  if(!existingBanner) {
+    existingBanner = document.createElement('div');
+    existingBanner.id = zoneDataBannerId;
+    const zonesTitle = document.getElementById('race-zones-title');
+    if(zonesTitle) zonesTitle.parentNode.insertBefore(existingBanner, zonesTitle);
+  }
+  if(!zoneReadiness.hasMinimum) {
+    existingBanner.innerHTML = `
+      <div style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7">
+        🔒 <strong style="color:var(--text2)">Zonas de treino ainda não disponíveis</strong><br>
+        Faltam: <strong style="color:var(--orange)">${zoneReadiness.missing.join(' e ')}</strong>.<br>
+        <span style="color:var(--text3)">As zonas aparecem automaticamente assim que houver dados suficientes.</span>
+      </div>`;
+  } else {
+    existingBanner.innerHTML = `
+      <div style="background:var(--teal-dim);border:0.5px solid rgba(46,232,196,0.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--teal);line-height:1.5">
+        ✓ Zonas calculadas com ${zoneReadiness.runsWithPace} corridas reais
+      </div>`;
+  }
+
   // Toggle hero sections based on goal type
   const heroRace = document.getElementById('race-hero-prediction');
   const heroFitness = document.getElementById('race-hero-fitness');
@@ -2710,44 +2754,8 @@ function renderRaceIQ() {
   if(heroRace)     heroRace.style.display     = hasRacePrediction ? '' : 'none';
   if(heroEmptyEl)  heroEmptyEl.style.display  = hasRacePrediction ? 'none' : '';
 
-  // v0.9.2.2 (complementar): Opção A — sem dados mínimos, a seção "Zonas de
-  // treino" inteira desaparece (título + Z1-Z4), sobrando só o banner
-  // explicando o que falta. Antes, as zonas genéricas ficavam sempre visíveis
-  // com paces fixos, contradizendo o "Precisamos de mais dados" do hero.
-  const zoneReadiness = getZoneReadiness();
-  const zonesTitleEl   = document.getElementById('race-zones-title');
-  const zonesGenericEl = document.getElementById('race-zones-generic');
-  const zonesGeneric2El= document.getElementById('race-zones-generic-2');
-  const showGenericZones = zoneReadiness.hasMinimum;
-  if(zonesTitleEl)    zonesTitleEl.style.display    = showGenericZones ? '' : 'none';
-  if(zonesGenericEl)  zonesGenericEl.style.display  = showGenericZones ? '' : 'none';
-  if(zonesGeneric2El) zonesGeneric2El.style.display = showGenericZones ? '' : 'none';
-
-  // Injetar banner de dados insuficientes acima das zonas (ou no lugar delas) se necessário
-  const zoneDataBannerId = 'race-zone-data-banner';
-  let existingBanner = document.getElementById(zoneDataBannerId);
-  if(!existingBanner) {
-    existingBanner = document.createElement('div');
-    existingBanner.id = zoneDataBannerId;
-    const zonesTitle = document.getElementById('race-zones-title');
-    if(zonesTitle) zonesTitle.parentNode.insertBefore(existingBanner, zonesTitle);
-  }
-  if(!zoneReadiness.hasMinimum) {
-    // v0.9.2.2 (complementar): antes esse banner dizia "zonas estimadas" enquanto
-    // as zonas ficavam visíveis com paces fixos — agora as zonas estão ocultas
-    // (Opção A), então o texto reflete isso: nada é mostrado até haver dados.
-    existingBanner.innerHTML = `
-      <div style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7">
-        🔒 <strong style="color:var(--text2)">Zonas de treino ainda não disponíveis</strong><br>
-        Faltam: <strong style="color:var(--orange)">${zoneReadiness.missing.join(' e ')}</strong>.<br>
-        <span style="color:var(--text3)">As zonas aparecem automaticamente assim que houver dados suficientes.</span>
-      </div>`;
-  } else {
-    existingBanner.innerHTML = `
-      <div style="background:var(--teal-dim);border:0.5px solid rgba(46,232,196,0.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--teal);line-height:1.5">
-        ✓ Zonas calculadas com ${zoneReadiness.runsWithPace} corridas reais
-      </div>`;
-  }
+  // v0.9.3.1 (P0): a checagem de zoneReadiness (Z1-Z4) já roda no topo da função
+  // agora — ver comentário lá. Removido daqui para não duplicar/redeclarar.
 
   // Longão history — only real data, never planned
   const ll = document.getElementById('race-longao-list');
@@ -2872,7 +2880,24 @@ const AI_BACKEND_MODE = 'LOCAL_GEMINI';
 // aceitável temporariamente, para um grupo pequeno e controlado de testers.
 // ════════════════════════════════════════════════════════════════════════
 const TESTER_MODE = true; // ⚠️ Remover antes da versão pública.
-const _TESTER_GEMINI_KEY = 'AQ.Ab8RN6IKTiM6PZq3syvE0rx9QXnfrhyJJOu3HUGH1iUnL3c9tg'; // ⚠️ Cole a key de teste aqui. Remover antes da versão pública.
+// v0.9.3.1 (P0): a key anterior aqui ('AQ.Ab8RN6IK...') NÃO é uma Gemini API
+// Key — é um token OAuth2 de acesso (formato/prefixo incompatível). Isso é
+// exatamente o que causa "Request had invalid authentication credentials" no
+// Gemini: a API rejeita o tipo de credencial, não é um problema de código.
+// Uma Gemini API Key válida (criada em aistudio.google.com/app/apikey) SEMPRE
+// começa com "AIzaSy". Cole a key correta abaixo antes de testar.
+const _TESTER_GEMINI_KEY = 'AIzaSyDxyRGvWDP4cSTUgkknKtnxNsJtxtjDux4'; // ⚠️ Cole aqui uma Gemini API Key válida (formato AIzaSy...). Remover antes da versão pública.
+
+// v0.9.3.1 (P0): validação de formato — avisa alto e claro no console se o
+// TESTER_MODE estiver ativo com uma key vazia ou com formato incorreto, em
+// vez de deixar o erro só aparecer pro usuário final dentro do chat do Coach.
+if(TESTER_MODE) {
+  if(!_TESTER_GEMINI_KEY) {
+    console.warn('⚠️ TESTER_MODE está ativo, mas _TESTER_GEMINI_KEY está vazia. O Coach IA vai falhar para usuários sem key própria.');
+  } else if(!/^AIzaSy/.test(_TESTER_GEMINI_KEY)) {
+    console.warn('⚠️ TESTER_MODE: _TESTER_GEMINI_KEY não parece ser uma Gemini API Key válida (deveria começar com "AIzaSy"). Verifique se não foi colado um token OAuth por engano.');
+  }
+}
 
 const GEMINI_KEY = 'pacemaker_gemini_key';
 function getGeminiKey() {
@@ -4200,12 +4225,21 @@ function previewConservativePlan() {
 
   pendingConservativePlan = {...pendingPlan, plan:conservPlan, kmGoal:Math.round(kmGoal*0.82)};
 
+  // v0.9.3.1 (P1): esta linha dizia "Musculação mantida" incondicionalmente,
+  // mesmo para atletas com doesStrength===false — texto do sistema assumindo
+  // musculação que o atleta nunca pediu. Agora só aparece se a divisão de
+  // musculação realmente faz parte do plano do atleta.
+  const athleteDoesStrength = state.athleteProfile?.doesStrength !== false;
+  const strengthLine = athleteDoesStrength
+    ? `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação A→B→C)</div>`
+    : '';
+
   // Show conservative preview in modal
   document.getElementById('preview-subtitle').textContent = `🛡 Plano conservador · Semana ${weekLabel}`;
   document.getElementById('preview-list').innerHTML = [
     `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>Volume reduzido ${pctReduction}%: ${stdKm}km → ${consKm}km</div>`,
     qualConverted>0?`<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>${qualConverted} treino(s) de qualidade → Z2</div>`:'',
-    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação A→B→C)</div>`,
+    strengthLine,
     `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Longão reduzido para menor impacto</div>`,
   ].join('');
   document.getElementById('preview-summary').innerHTML =
@@ -6442,11 +6476,13 @@ const _obData = {
 
 // ── Entry point ───────────────────────────────────────────
 function checkOnboarding() {
-  // Only show if logged in AND onboarding not done
-  if(!state.user) return;
+  // v0.9.3.1 (P0): antes só mostrava onboarding se houvesse login (`if(!state.user) return;`).
+  // Isso impedia qualquer usuário anônimo/local-only de ver o onboarding — caía
+  // direto no Dashboard vazio. O Coach IA (TESTER_MODE/key local) não depende de
+  // login, então o onboarding também não deveria depender.
   if(state.onboardingDone) return;
-  // Pre-fill name from Google account
-  if(state.user.displayName && !_obData.name) {
+  // Pre-fill name from Google account, se houver
+  if(state.user?.displayName && !_obData.name) {
     _obData.name = state.user.displayName.split(' ')[0];
     const nameInput = document.getElementById('ob-name');
     if(nameInput) nameInput.value = _obData.name;
@@ -7046,23 +7082,31 @@ function enterDashboard() {
 
 // ── Hook into onAuthStateChanged (robust — called directly from auth listener) ──
 window._pmCheckOnboardingAfterAuth = function() {
-  // Wait for cloud data to load before deciding if onboarding is needed
-  setTimeout(() => {
-    const decide = () => {
-      // Backward compatibility: existing users with workout history never see onboarding
-      if(!state.onboardingDone && state.workouts && state.workouts.length > 0) {
-        state.onboardingDone = true;
-        save();
-        return;
-      }
-      if(!state.onboardingDone) checkOnboarding();
-    };
-    if(typeof downloadFromCloud === 'function') {
-      downloadFromCloud().then(decide).catch(decide);
-    } else {
-      decide();
+  const decide = () => {
+    // Backward compatibility: existing users with workout history never see onboarding
+    if(!state.onboardingDone && state.workouts && state.workouts.length > 0) {
+      state.onboardingDone = true;
+      save();
+      return;
     }
-  }, 800); // slight delay to let Firebase load complete
+    if(!state.onboardingDone) checkOnboarding();
+  };
+
+  // v0.9.3.1 (P0): só vale a pena esperar a nuvem se HÁ alguém logado.
+  // Para sessão anônima, decidir imediatamente — não há nada para baixar,
+  // e esperar 800ms+downloadFromCloud() sem necessidade era um dos motivos
+  // do onboarding nunca aparecer a tempo (ou nunca aparecer) para novos usuários.
+  if(state.user) {
+    setTimeout(() => {
+      if(typeof downloadFromCloud === 'function') {
+        downloadFromCloud().then(decide).catch(decide);
+      } else {
+        decide();
+      }
+    }, 800); // slight delay to let Firebase load complete
+  } else {
+    decide();
+  }
 };
 
 // ── Safety net for local-only users (no login) ────────────
