@@ -2880,13 +2880,17 @@ const AI_BACKEND_MODE = 'LOCAL_GEMINI';
 // aceitável temporariamente, para um grupo pequeno e controlado de testers.
 // ════════════════════════════════════════════════════════════════════════
 const TESTER_MODE = true; // ⚠️ Remover antes da versão pública.
-// v0.9.3.1 (P0): a key anterior aqui ('AQ.Ab8RN6IK...') NÃO é uma Gemini API
-// Key — é um token OAuth2 de acesso (formato/prefixo incompatível). Isso é
-// exatamente o que causa "Request had invalid authentication credentials" no
-// Gemini: a API rejeita o tipo de credencial, não é um problema de código.
-// Uma Gemini API Key válida (criada em aistudio.google.com/app/apikey) SEMPRE
-// começa com "AIzaSy". Cole a key correta abaixo antes de testar.
-const _TESTER_GEMINI_KEY = 'AIzaSyDxyRGvWDP4cSTUgkknKtnxNsJtxtjDux4'; // ⚠️ Cole aqui uma Gemini API Key válida (formato AIzaSy...). Remover antes da versão pública.
+// v0.9.3.1 (P0, atualizado após teste isolado real): as duas tentativas
+// anteriores de key falharam por serem credenciais genuinamente inválidas
+// para esse uso (uma era a Web API Key do Firebase, restrita a serviços do
+// Firebase; outra era um token de sessão que nunca funcionou nem no AI
+// Studio). NÃO é verdade que toda key começando com "AQ." seja inválida —
+// essa suposição (de uma rodada anterior) foi refutada por teste real:
+// uma key "AQ.xxx" gerada oficialmente em aistudio.google.com/app/apikey
+// retornou 200 via ?key= (o mesmo método já usado em callGeminiDirect()).
+// O formato do prefixo NÃO é um indicador confiável de validade — só o
+// teste real (POST generateContent) confirma. Key abaixo já validada (200).
+const _TESTER_GEMINI_KEY = 'AQ.Ab8RN6Ig6IOdiJgonPJGtSFy3OQEQj0P7_ZXKCz7PM0ForudYQ'; // ⚠️ Validada com 200 em teste isolado. Remover antes da versão pública.
 
 // v0.9.3.1 (P0): validação de formato — avisa alto e claro no console se o
 // TESTER_MODE estiver ativo com uma key vazia ou com formato incorreto, em
