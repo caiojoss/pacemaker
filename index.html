@@ -21,10 +21,6 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, doc, setDoc, getDoc, enableIndexedDbPersistence }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-// v0.9.2.1-LOCAL: import preservado para futura reativação do backend (plano Blaze).
-// Não causa nenhuma chamada de rede por si só — só é usado se _FB_FUNCTIONS_ENABLED=true abaixo.
-import { getFunctions, httpsCallable }
-  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js';
 
 // Firebase config — replace with your project values from console.firebase.google.com
 const FB_CONFIG = {
@@ -36,14 +32,6 @@ const FB_CONFIG = {
   appId:             "1:724345484064:web:5935a46bef4e8a3754dd45"
 };
 
-// ──────────────────────────────────────────────────────────────────────────
-// v0.9.2.1-LOCAL: Cloud Functions desativadas (projeto está no plano Spark).
-// MANTENHA este flag sincronizado com AI_BACKEND_MODE (definido mais abaixo
-// no script principal). Quando migrar para o plano Blaze, troque para true
-// E troque AI_BACKEND_MODE para 'FIREBASE_BACKEND' — nada mais precisa mudar.
-// ──────────────────────────────────────────────────────────────────────────
-const _FB_FUNCTIONS_ENABLED = false;
-
 // Initialize Firebase
 const fbApp  = initializeApp(FB_CONFIG);
 const fbAuth = getAuth(fbApp);
@@ -54,18 +42,6 @@ enableIndexedDbPersistence(fbDb).catch(err => {
   if(err.code === 'failed-precondition') console.warn('Firestore persistence: multiple tabs open');
   else if(err.code === 'unimplemented') console.warn('Firestore persistence: browser not supported');
 });
-
-// ── [FIREBASE_BACKEND] Callables do backend Gemini — preservado, desativado ──
-// Encapsulado e isolado: window._pmCallGenerateStrategy / window._pmCallCoachChat
-// só existem se _FB_FUNCTIONS_ENABLED=true. callCoachAI()/generateStrategyAI()
-// já checam isso e não tentam usar o que não existe.
-if(_FB_FUNCTIONS_ENABLED) {
-  const fbFns = getFunctions(fbApp); // região default us-central1
-  const _callGenerateStrategy = httpsCallable(fbFns, 'generateInitialTrainingStrategy');
-  const _callCoachChat        = httpsCallable(fbFns, 'coachChat');
-  window._pmCallGenerateStrategy = (payload) => _callGenerateStrategy(payload);
-  window._pmCallCoachChat        = (payload) => _callCoachChat(payload);
-}
 
 // ── Expose to global scope so existing JS can call them ──
 window._fbAuth    = fbAuth;
@@ -84,16 +60,6 @@ onAuthStateChanged(fbAuth, user => {
   }
   if(typeof renderAuthCard === 'function') renderAuthCard();
   if(typeof renderSyncIndicator === 'function') renderSyncIndicator();
-  if(typeof updateGeminiBadge === 'function') updateGeminiBadge(); // v0.9.2.1: nativo depende do login
-  // v0.9.3.1 (P0): checar onboarding SEMPRE, com ou sem login. Antes, esta
-  // chamada só acontecia quando `user` era truthy — então uma sessão anônima
-  // (sem login, sem dados locais) nunca disparava o onboarding e caía direto
-  // no Dashboard vazio. onAuthStateChanged sempre dispara pelo menos uma vez
-  // (com user=null para sessões anônimas), então isso é seguro como gatilho
-  // único de inicialização.
-  if(typeof window._pmCheckOnboardingAfterAuth === 'function') {
-    window._pmCheckOnboardingAfterAuth();
-  }
 });
 </script>
 <style>
@@ -618,28 +584,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <span>Status</span>
         <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="openModal('modal-log')">+ Treino</button>
       </div>
-
-      <!-- v0.9.3 (P0): Ciclo de prova — card exibido quando a data da prova passa e
-           o strategyCycle muda para COMPLETED. Ainda não gera plano novo automaticamente,
-           apenas detecta o fim do ciclo e oferece os próximos passos. -->
-      <div id="db-cycle-completed-card" class="card" style="display:none;margin-bottom:12px;border-color:rgba(46,232,196,0.25);background:var(--teal-dim)">
-        <div style="font-size:28px;margin-bottom:6px">🏁</div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:var(--teal)">Parabéns pela conclusão do ciclo.</div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:14px" id="db-cycle-completed-sub">Sua prova já passou. Hora de fechar esse capítulo.</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" style="flex:1;font-size:11px" onclick="openCycleResultModal()">Registrar resultado</button>
-          <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="startNewCycleGoal()">Criar novo objetivo</button>
-        </div>
-      </div>
-
       <!-- Weekly Report (Fase 5) -->
       <div id="db-weekly-report"></div>
 
       <!-- Hero row -->
-      <div class="grid2" id="db-hero-row" style="margin-bottom:12px">
-        <div class="card" id="db-race-card" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
-          <div class="label" id="db-race-label">Próxima prova</div>
-          <div class="big-num" id="db-days" style="color:var(--accent);font-size:32px">--</div>
+      <div class="grid2" style="margin-bottom:12px">
+        <div class="card" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
+          <div class="label">Maratona em</div>
+          <div class="big-num" id="db-days" style="color:var(--accent)">--</div>
           <div class="sub" id="db-race-date">configurar data</div>
         </div>
         <div class="card" id="readiness-card">
@@ -796,41 +748,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
     <!-- RACE IQ -->
     <div id="sec-race" class="section">
       <div class="section-title"><span>Race IQ</span></div>
-
-      <!-- Race prediction hero — só para objetivos de prova -->
-      <div class="race-hero" id="race-hero-prediction">
-        <div class="label" id="race-hero-label">Previsão atual · Maratona</div>
+      <div class="race-hero">
+        <div class="label">Previsão atual · Maratona</div>
         <div class="race-big" id="race-predicted">--:--</div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin:6px 0 20px" id="race-basis">Baseado nos longões registrados</div>
         <div style="font-size:22px;color:var(--accent);margin-bottom:4px">↓</div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--text2)" id="race-target-line">Meta: <strong style="color:var(--accent)">sub 3h58</strong> · Pace: <strong style="color:var(--teal)">5:41/km</strong></div>
+        <div style="font-family:var(--mono);font-size:12px;color:var(--text2)">Meta: <strong style="color:var(--accent)">sub 3h58</strong> · Pace: <strong style="color:var(--teal)">5:41/km</strong></div>
       </div>
-
-      <!-- v0.9.2.2 (P0): empty state dedicado — elemento separado, nunca destrói os ids -->
-      <!-- acima via innerHTML (causava TypeError em re-renders: "Cannot set properties of null"). -->
-      <div class="race-hero" id="race-hero-empty" style="display:none">
-        <div style="text-align:center;padding:8px 0">
-          <div style="font-size:36px;margin-bottom:12px">📏</div>
-          <div style="font-size:16px;font-weight:700;margin-bottom:8px">Precisamos de mais dados</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:16px">
-            Registre pelo menos <strong style="color:var(--accent)">1 longão (15km+)</strong> com pace<br>para calcular sua previsão de prova.
-          </div>
-          <button class="btn btn-ghost" style="font-size:11px" onclick="openModal('modal-log')">+ Registrar treino</button>
-        </div>
-      </div>
-
-      <!-- Fitness hero — só para objetivo "Saúde e condicionamento" -->
-      <div class="race-hero" id="race-hero-fitness" style="display:none">
-        <div class="label">Sua evolução</div>
-        <div class="race-big" id="fitness-weekly-km" style="color:var(--teal)">--</div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin:6px 0 4px">km nas últimas 4 semanas</div>
-        <div style="font-family:var(--mono);font-size:12px;color:var(--text2)" id="fitness-consistency-line">Consistência: <strong style="color:var(--accent)">--</strong></div>
-      </div>
-
-      <!-- Gap indicator — só para objetivos de prova -->
-      <div class="card" style="margin-bottom:12px" id="race-gap-card">
+      <!-- Gap indicator -->
+      <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="label" id="race-gap-label">Gap para o Sub 4h</div>
+          <div class="label">Gap para o Sub 4h</div>
           <span class="badge badge-orange" id="race-gap-badge">--</span>
         </div>
         <div class="pbar-wrap" style="height:8px">
@@ -838,46 +766,32 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="race-gap-desc"></div>
       </div>
-
-      <!-- Fitness evolution card — só para "Saúde e condicionamento" -->
-      <div class="card" style="margin-bottom:12px" id="fitness-evolution-card" style="display:none">
-        <div class="label" style="margin-bottom:10px">Evolução de pace médio</div>
-        <div id="fitness-evolution-content"></div>
-      </div>
-
       <!-- Zones -->
-      <!-- v0.9.2.2 (complementar): id no título e wrapper nas zonas genéricas (Z1-Z4)
-           para que possam ser ocultadas por completo quando getZoneReadiness() indicar
-           dados insuficientes — Opção A. race-pace-zone já é controlada por hasRacePrediction. -->
-      <div style="font-size:13px;font-weight:700;margin-bottom:10px" id="race-zones-title">Zonas de treino</div>
-      <div id="race-zones-generic">
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z1 · Recuperação</div><div class="pace-zone-bpm">&lt; 125 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--blue)">7:10 /km</div>
-        </div>
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z2 · Base aeróbica</div><div class="pace-zone-bpm">125–142 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--green)">6:20 /km</div>
-        </div>
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z3 · Tempo/Limiar</div><div class="pace-zone-bpm">142–158 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--orange)">5:48 /km</div>
-        </div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">Zonas de treino</div>
+      <div class="pace-zone">
+        <div><div class="pace-zone-name">Z1 · Recuperação</div><div class="pace-zone-bpm">&lt; 125 bpm</div></div>
+        <div class="pace-zone-val" style="color:var(--blue)">7:10 /km</div>
       </div>
-      <div class="pace-zone" id="race-pace-zone" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
-        <div><div class="pace-zone-name" style="color:var(--accent)" id="race-pace-zone-name">Race Pace · Sub 4h</div><div class="pace-zone-bpm">155–162 bpm</div></div>
-        <div class="pace-zone-val" style="color:var(--accent)" id="race-pace-zone-val">5:41 /km</div>
+      <div class="pace-zone">
+        <div><div class="pace-zone-name">Z2 · Base aeróbica</div><div class="pace-zone-bpm">125–142 bpm</div></div>
+        <div class="pace-zone-val" style="color:var(--green)">6:20 /km</div>
       </div>
-      <div id="race-zones-generic-2">
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z4 · VO2max</div><div class="pace-zone-bpm">158–172 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--red)">5:15 /km</div>
-        </div>
+      <div class="pace-zone">
+        <div><div class="pace-zone-name">Z3 · Tempo/Limiar</div><div class="pace-zone-bpm">142–158 bpm</div></div>
+        <div class="pace-zone-val" style="color:var(--orange)">5:48 /km</div>
+      </div>
+      <div class="pace-zone" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
+        <div><div class="pace-zone-name" style="color:var(--accent)">Race Pace · Sub 4h</div><div class="pace-zone-bpm">155–162 bpm</div></div>
+        <div class="pace-zone-val" style="color:var(--accent)">5:41 /km</div>
+      </div>
+      <div class="pace-zone">
+        <div><div class="pace-zone-name">Z4 · VO2max</div><div class="pace-zone-bpm">158–172 bpm</div></div>
+        <div class="pace-zone-val" style="color:var(--red)">5:15 /km</div>
       </div>
       <!-- Longão history -->
-      <div style="font-size:13px;font-weight:700;margin:16px 0 10px" id="race-source-title">Fonte dos dados</div>
+      <div style="font-size:13px;font-weight:700;margin:16px 0 10px">Fonte dos dados</div>
       <div id="race-source-card" style="margin-bottom:12px"></div>
-      <div style="font-size:13px;font-weight:700;margin:16px 0 10px" id="race-history-title">Histórico de longões</div>
+      <div style="font-size:13px;font-weight:700;margin:16px 0 10px">Histórico de longões</div>
       <div id="race-longao-list"></div>
     </div>
 
@@ -909,7 +823,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <div class="chat-wrap" style="margin-bottom:14px">
         <div class="chat-msgs" id="chat-msgs"></div>
         <div class="chat-input-row">
-          <input class="chat-input" id="chat-input" type="search" name="coach-query" placeholder="Pergunte ao seu coach..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other" data-lpignore="true" onkeydown="if(event.key==='Enter')sendCoach()"/>
+          <input class="chat-input" id="chat-input" placeholder="Pergunte ao seu coach..." autocomplete="off" onkeydown="if(event.key==='Enter')sendCoach()"/>
           <button class="chat-send" onclick="sendCoach()">→</button>
         </div>
       </div>
@@ -981,54 +895,49 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           </div>
         </div>
       </div>
-      <div class="card" style="margin-bottom:16px" id="cfg-race-card">
-        <div class="label" style="margin-bottom:12px">Dados da prova</div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="label" style="margin-bottom:12px">Dados da corrida</div>
         <div class="form-group">
-          <label class="form-label">Data da prova</label>
+          <label class="form-label">Data da maratona</label>
           <input type="date" class="form-input" id="cfg-race-date"/>
         </div>
         <div class="form-group">
-          <label class="form-label">Nome da prova</label>
+          <label class="form-label">Nome da maratona</label>
           <input type="text" class="form-input" id="cfg-race-name" placeholder="Ex: Maratona de São Paulo"/>
         </div>
-        <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar prova</button>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="label" style="margin-bottom:12px">Metas de volume</div>
         <div class="form-group">
           <label class="form-label">Meta mensal de km</label>
-          <input type="number" class="form-input" id="cfg-month-goal" placeholder="Ex: 150"/>
+          <input type="number" class="form-input" id="cfg-month-goal" placeholder="190"/>
         </div>
         <div class="form-group">
           <label class="form-label">Meta de volume semanal (km)</label>
-          <input type="number" class="form-input" id="cfg-week-goal" placeholder="Ex: 40"/>
+          <input type="number" class="form-input" id="cfg-week-goal" placeholder="52"/>
         </div>
         <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar configurações</button>
       </div>
-      <div class="card" style="margin-bottom:16px" id="cfg-scale-card">
-        <div class="label" style="margin-bottom:4px" id="cfg-scale-title">Rotina de trabalho</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:12px" id="cfg-scale-current"></div>
-        <div class="form-group" id="cfg-scale-start-group" style="display:none">
-          <label class="form-label" id="cfg-scale-start-label">Data de início do ciclo</label>
+      <div class="card" style="margin-bottom:16px">
+        <div class="label" style="margin-bottom:12px">Escala de trabalho 2x2</div>
+        <div class="form-group">
+          <label class="form-label">Primeiro dia de trabalho desta rotação</label>
           <input type="date" class="form-input" id="cfg-scale-start"/>
         </div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px;line-height:1.5" id="cfg-scale-desc"></div>
-        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveConfig()">Salvar rotina</button>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px;line-height:1.5">O app calculará automaticamente seus dias de trabalho e folga com base na escala 2x2.</div>
+        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveConfig()">Salvar escala</button>
       </div>
       <div class="card" style="margin-bottom:16px">
         <div class="label" style="margin-bottom:12px">Dados pessoais</div>
         <div class="form-group">
           <label class="form-label">Nome</label>
-          <input type="text" class="form-input" id="cfg-name" name="athlete-display-name" autocomplete="name" placeholder="Seu nome"/>
+          <input type="text" class="form-input" id="cfg-name" placeholder="Caio"/>
         </div>
         <div class="grid2" style="gap:10px">
           <div class="form-group">
             <label class="form-label">Peso (kg)</label>
-            <input type="number" class="form-input" id="cfg-weight" placeholder="Ex: 70"/>
+            <input type="number" class="form-input" id="cfg-weight" placeholder="110"/>
           </div>
           <div class="form-group">
             <label class="form-label">Altura (cm)</label>
-            <input type="number" class="form-input" id="cfg-height" placeholder="Ex: 175"/>
+            <input type="number" class="form-input" id="cfg-height" placeholder="175"/>
           </div>
         </div>
         <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar dados</button>
@@ -1059,55 +968,23 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="strava-last-sync">Nunca sincronizado</div>
         </div>
       </div>
-
-      <!-- v0.9.3 (P1): Strava Connect Foundation — arquitetura/placeholder para a
-           futura sincronização automática (sem CID manual). NÃO substitui o fluxo
-           acima (Client ID manual) — convive com ele até a migração completa. -->
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#FC4C02" opacity="0.6"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
-          <div class="label" style="margin-bottom:0">Strava Connect</div>
-          <div id="strava-connect-v2-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">em breve</div>
-        </div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">
-          Sincronização automática, sem precisar de Client ID — só conectar sua conta Strava. Esta é a base que estamos preparando; por enquanto, use a importação manual acima.
-        </div>
-        <button class="btn btn-ghost btn-full" style="font-size:11px;opacity:0.7" onclick="stravaConnectV2Placeholder()">
-          Conectar com Strava (em breve)
-        </button>
-      </div>
-
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
           <span style="font-size:16px">✨</span>
-          <div class="label" style="margin-bottom:0">Coach AI</div>
+          <div class="label" style="margin-bottom:0">Coach AI · Gemini</div>
           <div id="gemini-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">inativo</div>
         </div>
-        <div id="coach-ai-intro" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;line-height:1.6">
-          O Pacemaker já vem com um Coach IA nativo — basta estar logado, sem precisar configurar nenhuma chave.
-        </div>
-        <div id="coach-native-status" style="font-size:10px;color:var(--teal);font-family:var(--mono);margin-bottom:12px;line-height:1.5"></div>
-
-        <button class="btn btn-ghost btn-full" id="adv-gemini-toggle-btn" style="font-size:11px" onclick="toggleAdvancedGeminiSection()">
-          <span id="adv-gemini-toggle-label">⚙️ Avançado: usar minha própria Gemini API Key</span>
-        </button>
-
-        <div id="advanced-gemini-section" style="display:none;margin-top:12px;padding-top:12px;border-top:0.5px solid var(--border)">
-          <div id="advanced-gemini-note" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">
-            Opcional. Use sua própria key apenas se quiser um modelo diferente do nativo, ou se preferir não depender do backend do Pacemaker. Salva só no dispositivo, nunca enviada ao servidor.<br/>
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;line-height:1.6">Cole sua Gemini API key para ativar o Coach com IA real. Salva só no dispositivo, nunca enviada ao servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a></div>
+        <div class="form-group">
+          <label class="form-label">Gemini API Key</label>
+          <div style="position:relative">
+            <input type="password" class="form-input" id="cfg-gemini-key" autocomplete="new-password" placeholder="Cole sua Gemini API Key" style="padding-right:44px"/>
+            <button onclick="toggleGeminiKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px" id="gemini-key-eye">👁</button>
           </div>
-          <div class="form-group">
-            <label class="form-label" id="gemini-key-label">Gemini API Key (opcional)</label>
-            <div style="position:relative">
-              <input type="password" class="form-input" id="cfg-gemini-key" autocomplete="new-password" name="gemini-api-token" data-form-type="other" data-lpignore="true" placeholder="Cole sua Gemini API Key" style="padding-right:44px"/>
-              <button onclick="toggleGeminiKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px" id="gemini-key-eye">👁</button>
-            </div>
-          </div>
-          <div id="gemini-key-status" style="font-family:var(--mono);font-size:10px;margin-bottom:10px;display:none"></div>
-          <button class="btn btn-primary btn-full" onclick="saveGeminiKey()">Salvar e usar minha key</button>
-          <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="clearGeminiKey()">Remover minha key (voltar ao nativo)</button>
         </div>
+        <div id="gemini-key-status" style="font-family:var(--mono);font-size:10px;margin-bottom:10px;display:none"></div>
+        <button class="btn btn-primary btn-full" onclick="saveGeminiKey()">Salvar e ativar Gemini</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px" onclick="clearGeminiKey()">Remover API key</button>
       </div>
 
       <div class="card" style="margin-bottom:16px">
@@ -1115,42 +992,45 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">O Coach usa essas informações para personalizar respostas e insights.</div>
         <div class="form-group">
           <label class="form-label">Objetivo principal</label>
-          <input type="text" class="form-input" id="cfg-ap-goal" placeholder="Definido no onboarding"/>
+          <select class="form-select" id="cfg-ap-goal">
+            <option value="">Não definido</option>
+            <option value="first_marathon">Completar minha primeira maratona</option>
+            <option value="sub4">Maratona sub 4 horas</option>
+            <option value="sub3h30">Maratona sub 3h30</option>
+            <option value="pr">Bater meu PR</option>
+            <option value="finish">Só terminar bem</option>
+          </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Tempo alvo</label>
-          <input type="text" class="form-input" id="cfg-ap-target-time" placeholder="Não definido"/>
+          <label class="form-label">Tempo alvo (ex: 3:58)</label>
+          <input type="text" class="form-input" id="cfg-ap-target-time" placeholder="3:58"/>
         </div>
         <div class="form-group">
-          <label class="form-label">Treina musculação?</label>
+          <label class="form-label">Preferência de musculação</label>
           <select class="form-select" id="cfg-ap-strength-pref">
-            <option value="off">Não faço musculação</option>
-            <option value="ABC">Sim — ABC (Peito/Costas/Pernas)</option>
-            <option value="ABCD">Sim — ABCD</option>
-            <option value="AB">Sim — Superior/Inferior</option>
-            <option value="PPL">Sim — Push / Pull / Legs</option>
-            <option value="custom">Sim — Personalizado</option>
+            <option value="ABC">ABC (Peito/Costas/Pernas)</option>
+            <option value="AB">AB (Superior/Inferior)</option>
+            <option value="PPL">Push / Pull / Legs</option>
+            <option value="">Sem preferência</option>
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Longão máximo preferido (km)</label>
-          <input type="number" class="form-input" id="cfg-ap-longrun-pref" placeholder="Automático"/>
+          <input type="number" class="form-input" id="cfg-ap-longrun-pref" placeholder="32 (0 = automático)"/>
         </div>
         <div class="form-group">
           <label class="form-label">Histórico de lesões</label>
-          <textarea class="form-textarea" id="cfg-ap-injuries" rows="2" placeholder="Não informado"></textarea>
+          <textarea class="form-textarea" id="cfg-ap-injuries" rows="2" placeholder="Ex: tendinite no joelho direito em 2023, síndrome do IT band"></textarea>
         </div>
         <div class="form-group">
           <label class="form-label">Observações para o Coach</label>
-          <textarea class="form-textarea" id="cfg-ap-notes" rows="2" placeholder="Nenhuma observação"></textarea>
+          <textarea class="form-textarea" id="cfg-ap-notes" rows="2" placeholder="Ex: prefiro treinar de manhã, odeio esteira, tremo no km 35..."></textarea>
         </div>
         <button class="btn btn-primary btn-full" onclick="saveAthleteProfile()">Salvar memória do atleta</button>
       </div>
       <div class="card">
         <div class="label" style="margin-bottom:10px">Dados do app</div>
         <button class="btn btn-danger btn-full" onclick="if(confirm('Apagar todos os treinos? Isso não pode ser desfeito.'))clearData()">Limpar todos os treinos</button>
-        <button class="btn btn-ghost btn-full" style="margin-top:8px;font-size:11px;color:var(--text3)" onclick="enterOnboardingTestMode()">🧪 Testar onboarding (reversível)</button>
-        <button class="btn btn-ghost btn-full" id="btn-restore-test" style="margin-top:8px;font-size:11px;color:var(--teal);display:none" onclick="restoreFromTestBackup()">↩️ Restaurar meus dados reais</button>
       </div>
       <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:20px;padding-bottom:10px">PACEMAKER v1.0 · Seus dados ficam no dispositivo</div>
     </div>
@@ -1351,39 +1231,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <button class="modal-close" onclick="closeModal('modal-strava')">×</button>
     </div>
     <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:12px" id="strava-import-subtitle">Selecione os treinos para importar</div>
-    <div style="display:flex;gap:8px;margin-bottom:12px" id="strava-import-actions">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn btn-ghost" style="font-size:11px;flex:1;padding:7px" onclick="stravaSelectAll()">Selecionar novos</button>
       <button class="btn btn-primary" style="font-size:11px;flex:1;padding:7px" onclick="stravaImportSelected()" id="strava-import-btn">Importar selecionados</button>
     </div>
     <div id="strava-activity-list" style="max-height:50vh;overflow-y:auto"></div>
-
-    <!-- v0.9.3 (P1): Importação Inteligente — auditoria pós-importação. Antes, a
-         importação só fechava o modal com um toast genérico ("N importados"),
-         gerando sensação de perda de histórico. Agora mostra exatamente o que
-         foi recuperado antes de fechar. -->
-    <div id="strava-import-summary" style="display:none">
-      <div style="text-align:center;padding:8px 0 4px">
-        <div style="font-size:32px;margin-bottom:10px">✅</div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:14px">Importação concluída.</div>
-      </div>
-      <div class="ob-summary-row">
-        <span class="ob-summary-key">Treinos importados</span>
-        <span class="ob-summary-val accent" id="sis-count">0</span>
-      </div>
-      <div class="ob-summary-row">
-        <span class="ob-summary-key">KM recuperados</span>
-        <span class="ob-summary-val" id="sis-km">0 km</span>
-      </div>
-      <div class="ob-summary-row">
-        <span class="ob-summary-key">Longões encontrados</span>
-        <span class="ob-summary-val" id="sis-longoes">0</span>
-      </div>
-      <div class="ob-summary-row">
-        <span class="ob-summary-key">Período coberto</span>
-        <span class="ob-summary-val" id="sis-periodo">--</span>
-      </div>
-      <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="closeStravaImportSummary()">Concluir</button>
-    </div>
   </div>
 </div>
 
@@ -1551,8 +1403,7 @@ function getStravaKey()  { return state.user?.uid ? `pacemaker_strava_${state.us
 function getStravaCidKey(){ return state.user?.uid ? `pacemaker_strava_cid_${state.user.uid}`    : 'pacemaker_strava_cid';    }
 function getStravaSecKey(){ return state.user?.uid ? `pacemaker_strava_secret_${state.user.uid}` : 'pacemaker_strava_secret'; }
 let state = {
-  updatedAt: null, // v0.9.2.2 (P0): timestamp da última alteração local — usado para evitar que dados antigos da nuvem sobrescrevam dados locais mais recentes
-  config: { raceDate:'', raceName:'Maratona', monthGoal:0, weekGoal:0, scaleStart:'', name:'', weight:0, height:0, goalType:'', workSchedule:'', customWorkDays:[] },
+  config: { raceDate:'', raceName:'Maratona', monthGoal:190, weekGoal:52, scaleStart:'', name:'Caio', weight:110, height:175 },
   workouts: [],
   chatHistory: [],
   athleteProfile: {
@@ -1560,43 +1411,16 @@ let state = {
     targetTime: '',
     injuryHistory: '',
     longRunPref: 0,
-    // v0.9.3 (P0): musculação agora é explícita. doesStrength=true é o default
-    // de MIGRAÇÃO (preserva o comportamento legado para perfis já existentes
-    // que nunca responderam a essa pergunta). Usuários novos respondem no
-    // onboarding; usuários antigos podem mudar em Configurações.
-    doesStrength: true,
-    strengthPref: '',
+    strengthPref: 'ABC',
     notes: '',
     updatedAt: ''
   },
   user: null,  // { uid, displayName, email, photoURL } — set by Firebase auth listener
-  onboardingDone: false, // v0.9.0: tracks if user completed onboarding flow
-  // v0.9.2: AI-generated initial strategy — the single source of truth for both Coach and Planner
-  aiStrategy: null, // { weeklyVolume, sessions, longRun, rationale, generatedAt, model }
-  // v0.9.3 (P0): Estratégia Viva — preparação de arquitetura, SEM regeneração
-  // automática ainda. Hoje só rastreia o ciclo atual (objetivo/prova) e detecta
-  // quando ele termina (status COMPLETED). A lógica de regenerar automaticamente
-  // fica para uma versão futura.
-  strategyCycle: null, // { goalType, targetTime, raceDate, generatedAt, status: 'ACTIVE'|'EXPIRED'|'COMPLETED' }
   stravaConfig: {
     clientId:  '',    // safe to sync — public value
     connected: false, // whether Strava is linked
     athlete:   {}     // { id, firstname, lastname, profile } — safe metadata
     // access_token, refresh_token, client_secret → device-local only (never synced)
-  },
-  // v0.9.3 (P1): Strava Connect Foundation — arquitetura para a futura sincronização
-  // automática (OAuth completo via app própria do Pacemaker, sem o usuário precisar
-  // criar um Client ID). Ainda não tem OAuth implementado — só o estado e a UI.
-  stravaConnection: {
-    connected: false,
-    athleteId: null,
-    lastSync: null
-  },
-  // v0.9.3 (P2): Exportação para Google Calendar — só a estrutura, ainda sem
-  // integração real (continua sendo .ics manual por enquanto).
-  calendarExport: {
-    connected: false,
-    lastExport: null
   }
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
@@ -1625,32 +1449,6 @@ function load() {
   const uidKey = state.user?.uid ? `pacemaker_${state.user.uid}` : null;
   const raw = (uidKey && localStorage.getItem(uidKey)) || localStorage.getItem(DB_KEY_LEGACY);
   if(raw) { try { state = {...state, ...JSON.parse(raw)}; } catch(e){} }
-
-  // v0.9.3 (P0) — MIGRAÇÃO: o merge acima é raso (shallow spread), então se o
-  // dado salvo já tinha um objeto athleteProfile (perfis antigos, pré-v0.9.3),
-  // ele substitui o default por completo — inclusive removendo doesStrength
-  // (que nem existia antes). Sem isso, state.athleteProfile.doesStrength viraria
-  // undefined para todo usuário existente, e o Planner trataria isso como "sem
-  // musculação" — uma mudança de comportamento silenciosa que não foi pedida.
-  // Backfill explícito: preserva o comportamento legado (musculação assumida).
-  if(state.athleteProfile && state.athleteProfile.doesStrength === undefined) {
-    state.athleteProfile.doesStrength = true;
-  }
-
-  // v0.9.3 (P0) — MIGRAÇÃO: backfill de strategyCycle para usuários que já
-  // completaram o onboarding em versões anteriores (a estrutura não existia).
-  // Sem isso, checkStrategyCycleCompletion() nunca teria nada para verificar
-  // em contas já existentes — a detecção de fim de ciclo só funcionaria para
-  // quem fizer onboarding a partir de agora.
-  if(!state.strategyCycle && state.onboardingDone) {
-    state.strategyCycle = {
-      goalType: state.config.goalType || '',
-      targetTime: state.athleteProfile?.targetTime || '',
-      raceDate: state.config.raceDate || '',
-      generatedAt: state.athleteProfile?.updatedAt || new Date().toISOString(),
-      status: 'ACTIVE'
-    };
-  }
 }
 
 // ==================== NAV ====================
@@ -1934,12 +1732,8 @@ function nextSuggestedWorkout() {
 
   if(!isWork && daysSinceLastLong >= 6) return {title:'Longão Z2',detail:`${Math.min(22,Math.round((weekGoal-weekKm)*0.5)+14)}km · Pace 6:20–6:40 · FC <145bpm`,type:'long'};
   if(!isWork) return {title:'Progressivo / Tiros',detail:'8–14km · Z2 + 4x1km no pace alvo',type:'progressivo'};
-  // v0.9.3 (P0): antes esta sugestão assumia musculação em TODA manhã de trabalho,
-  // mesmo para corredores que nunca disseram que treinam força. Agora respeita
-  // athleteProfile.doesStrength (default true só para perfis legados/migrados).
-  const doesStrength = state.athleteProfile?.doesStrength !== false;
   const hasMorning = state.workouts.find(w=>w.date===tStr&&w.type==='strength');
-  if(isWork && doesStrength && !hasMorning) return {title:'Musculação (manhã)',detail:'40 min · Foco em glúteos, core e estabilidade',type:'strength'};
+  if(isWork && !hasMorning) return {title:'Musculação (manhã)',detail:'40 min · Foco em glúteos, core e estabilidade',type:'strength'};
   return {title:'Corrida Z2',detail:'8–10km fácil · FC <140bpm',type:'z2'};
 }
 
@@ -1984,7 +1778,7 @@ function renderWeeklyReport() {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="label" style="margin-bottom:0">Weekly Report · Semana Passada</div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-accent">v0.9.0</span>
+          <span class="badge badge-accent">v0.8.5</span>
           <button class="btn btn-ghost" style="font-size:9px;padding:4px 8px;display:none" id="wr-fulllink" onclick="goTo('sec-weekly-reports')">Ver completo →</button>
         </div>
       </div>
@@ -2029,26 +1823,17 @@ function renderDashboardBase() {
   // Weekly Report card (existia antes do v0.8.5 — restaurado)
   renderWeeklyReport();
 
-  // Countdown — v0.9.1: card só aparece se houver prova E objetivo não for "saúde e condicionamento"
+  // Countdown
   const rc = state.config.raceDate;
-  const isHealthGoal = state.config.goalType === 'health';
-  const raceCard = document.getElementById('db-race-card');
-  const heroRow = document.getElementById('db-hero-row');
-  if(rc && !isHealthGoal) {
+  if(rc) {
     const days = daysBetween(today(), rc);
-    if(raceCard) raceCard.style.display = '';
-    if(heroRow) heroRow.style.gridTemplateColumns = '1fr 1fr';
-    const dt = new Date(rc+'T12:00:00');
-    const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    const fullDate = `${dt.getDate()} ${monthNames[dt.getMonth()]} ${dt.getFullYear()}`;
-    document.getElementById('db-race-label').textContent = 'Próxima prova';
-    document.getElementById('db-days').textContent = days>0?days+' dias':'Dia D! 🏁';
-    document.getElementById('db-race-date').textContent = (state.config.raceName||'Prova') + ' · ' + fullDate;
+    document.getElementById('db-days').textContent = days>0?days:'Dia D!';
+    document.getElementById('db-race-date').textContent = formatDate(rc) + ' · ' + (state.config.raceName||'Maratona');
     document.getElementById('header-countdown').textContent = (days>0?days+'d':'Dia D') + ' 🏁';
   } else {
-    if(raceCard) raceCard.style.display = 'none';
-    if(heroRow) heroRow.style.gridTemplateColumns = '1fr';
-    document.getElementById('header-countdown').textContent = '';
+    document.getElementById('db-days').textContent = '--';
+    document.getElementById('db-race-date').textContent = 'Configure a data';
+    document.getElementById('header-countdown').textContent = '-- dias';
   }
 
   // KMs — completed only (truth source)
@@ -2328,13 +2113,13 @@ function renderPlannerSuggestion() {
   const ws = weekStart(today());
   const we = new Date(ws+'T12:00:00'); we.setDate(we.getDate()+6);
   const weStr = we.toISOString().split('T')[0];
-  // Bug fix: total da semana = planned restante + completed (não só o que ainda falta)
-  const currentWeekAll = state.workouts.filter(w=>(isPlanned(w)||isCompleted(w))&&w.date>=ws&&w.date<=weStr);
-  const totalWeekKm = currentWeekAll.reduce((a,w)=>a+(w.dist||0),0);
-  const wg = totalWeekKm > 0 ? totalWeekKm : (state.config.weekGoal||52);
+  // Bug 1 fix: use actual planned volume for current week if plan exists, else config goal
+  const currentWeekPlanned = state.workouts.filter(w=>isPlanned(w)&&w.date>=ws&&w.date<=weStr);
+  const plannedKm = currentWeekPlanned.reduce((a,w)=>a+(w.dist||0),0);
+  const wg = plannedKm > 0 ? plannedKm : (state.config.weekGoal||52);
   const remaining = Math.max(0, wg - wkm);
   const adherence = planAdherence();
-  const hasPlanCurrent = currentWeekAll.some(w=>isPlanned(w));
+  const hasPlanCurrent = currentWeekPlanned.length > 0;
   const el = document.getElementById('planner-week-suggestion');
   el.innerHTML = `
     <div class="card-header-row">
@@ -2344,7 +2129,6 @@ function renderPlannerSuggestion() {
           <button class="overflow-btn" onclick="toggleOverflow('overflow-current',event)" aria-label="Opções">⋮</button>
           <div class="overflow-menu" id="overflow-current">
             <button class="overflow-item" onclick="exportCurrentWeek();closeOverflow('overflow-current')">📅 Exportar semana atual</button>
-            <button class="overflow-item" onclick="exportToGoogleCalendarPlaceholder();closeOverflow('overflow-current')">🗓️ Exportar p/ Google Calendar (em breve)</button>
             <button class="overflow-item danger" onclick="confirmClearCurrentWeek();closeOverflow('overflow-current')">🧹 Limpar semana planejada</button>
           </div>
         </div>` : ''}
@@ -2409,7 +2193,6 @@ function renderNextWeekCard() {
           <button class="overflow-btn" onclick="toggleOverflow('overflow-next',event)" aria-label="Opções">⋮</button>
           <div class="overflow-menu" id="overflow-next">
             <button class="overflow-item" onclick="exportNextWeekToCalendar();closeOverflow('overflow-next')">📅 Exportar .ics</button>
-            <button class="overflow-item" onclick="exportToGoogleCalendarPlaceholder();closeOverflow('overflow-next')">🗓️ Exportar p/ Google Calendar (em breve)</button>
             <button class="overflow-item danger" onclick="confirmClearNextWeek();closeOverflow('overflow-next')">🧹 Limpar plano</button>
           </div>
         </div>
@@ -2522,140 +2305,8 @@ function exportNextWeekToCalendar() {
 
 function plannerNav(dir) { plannerOffset+=dir; renderPlanner(); }
 
-// ==================== ZONE INTELLIGENCE ARCHITECTURE (v0.9.2) ====================
-// ─────────────────────────────────────────────────────────────────────────────────
-// Dados necessários para cada nível de cálculo:
-//
-// MÍNIMO (mostrar qualquer previsão):
-//   - 5+ corridas concluídas com pace registrado
-//   - 1+ longão (dist >= 15km) com pace
-//
-// PADRÃO (zonas e previsão confiáveis):
-//   - 10+ corridas com pace
-//   - 3+ longões com pace
-//   - Pelo menos 4 semanas de histórico
-//
-// AVANÇADO — futuro (zonas baseadas em FC):
-//   - Dados de FC (Strava sync ou entrada manual)
-//   - Teste de LTHR ou resultado de prova com FC
-//
-// FUTURO:
-//   - Integração Strava para pace + FC automáticos
-//   - VO2max estimado por prova ou equipamento
-// ─────────────────────────────────────────────────────────────────────────────────
-function getZoneReadiness() {
-  const completedRuns = state.workouts.filter(w =>
-    !w.planned &&
-    ['z2','long','interval','progressivo','tempo'].includes(w.type) &&
-    w.pace && paceToSec(w.pace) > 150 && // pace válido (>2:30/km)
-    w.dist > 0
-  );
-  const longRuns = completedRuns.filter(w => w.type === 'long' || w.dist >= 15);
-  const pacedRuns = completedRuns.filter(w => paceToSec(w.pace) < 800); // <13:20/km
-
-  const hasMinimum = pacedRuns.length >= 5 && longRuns.length >= 1;
-  const hasStandard = pacedRuns.length >= 10 && longRuns.length >= 3;
-
-  const avgPaceSec = pacedRuns.length > 0
-    ? pacedRuns.reduce((a,w) => a + paceToSec(w.pace), 0) / pacedRuns.length
-    : 0;
-
-  const bestLongPace = longRuns.filter(w => w.pace).length > 0
-    ? Math.min(...longRuns.filter(w => w.pace).map(w => paceToSec(w.pace)))
-    : 0;
-
-  const missing = [];
-  if(pacedRuns.length < 5) missing.push(`${Math.max(0, 5-pacedRuns.length)} corridas com pace`);
-  if(longRuns.length < 1)  missing.push('1 longão de 15km+ com pace');
-
-  return { hasMinimum, hasStandard, runsWithPace: pacedRuns.length, longRunCount: longRuns.length, avgPaceSec, bestLongPace, missing };
-}
-
 // ==================== RENDER RACE IQ ====================
 function renderRaceIQ() {
-  const isHealthGoal = state.config.goalType === 'health';
-
-  // v0.9.3.1 (P0): movido para o TOPO da função — antes vivia depois do branch
-  // de isHealthGoal, que faz `return` antecipado para metas de saúde. Como a
-  // maioria dos novos testers escolhe "Saúde e Condicionamento" no onboarding,
-  // essa lógica NUNCA executava para eles: as zonas Z1-Z4 ficavam sempre
-  // visíveis com paces fixos, mesmo sem nenhum dado. Z1-Z4 são genéricas (não
-  // dependem do tipo de objetivo), então essa checagem deve correr sempre,
-  // antes de qualquer return condicional por tipo de meta.
-  const zoneReadiness = getZoneReadiness();
-  const zonesTitleEl   = document.getElementById('race-zones-title');
-  const zonesGenericEl = document.getElementById('race-zones-generic');
-  const zonesGeneric2El= document.getElementById('race-zones-generic-2');
-  const showGenericZones = zoneReadiness.hasMinimum;
-  if(zonesTitleEl)    zonesTitleEl.style.display    = showGenericZones ? '' : 'none';
-  if(zonesGenericEl)  zonesGenericEl.style.display  = showGenericZones ? '' : 'none';
-  if(zonesGeneric2El) zonesGeneric2El.style.display = showGenericZones ? '' : 'none';
-
-  // Injetar banner de dados insuficientes acima das zonas (ou no lugar delas) se necessário
-  const zoneDataBannerId = 'race-zone-data-banner';
-  let existingBanner = document.getElementById(zoneDataBannerId);
-  if(!existingBanner) {
-    existingBanner = document.createElement('div');
-    existingBanner.id = zoneDataBannerId;
-    const zonesTitle = document.getElementById('race-zones-title');
-    if(zonesTitle) zonesTitle.parentNode.insertBefore(existingBanner, zonesTitle);
-  }
-  if(!zoneReadiness.hasMinimum) {
-    existingBanner.innerHTML = `
-      <div style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7">
-        🔒 <strong style="color:var(--text2)">Zonas de treino ainda não disponíveis</strong><br>
-        Faltam: <strong style="color:var(--orange)">${zoneReadiness.missing.join(' e ')}</strong>.<br>
-        <span style="color:var(--text3)">As zonas aparecem automaticamente assim que houver dados suficientes.</span>
-      </div>`;
-  } else {
-    existingBanner.innerHTML = `
-      <div style="background:var(--teal-dim);border:0.5px solid rgba(46,232,196,0.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--teal);line-height:1.5">
-        ✓ Zonas calculadas com ${zoneReadiness.runsWithPace} corridas reais
-      </div>`;
-  }
-
-  // Toggle hero sections based on goal type
-  const heroRace = document.getElementById('race-hero-prediction');
-  const heroFitness = document.getElementById('race-hero-fitness');
-  const gapCard = document.getElementById('race-gap-card');
-  const fitnessCard = document.getElementById('fitness-evolution-card');
-  const raceZone = document.getElementById('race-pace-zone');
-  const srcTitle = document.getElementById('race-source-title');
-  const srcCard = document.getElementById('race-source-card');
-  const histTitle = document.getElementById('race-history-title');
-  const histList = document.getElementById('race-longao-list');
-
-  if(isHealthGoal) {
-    if(heroRace) heroRace.style.display = 'none';
-    if(heroFitness) heroFitness.style.display = '';
-    if(document.getElementById('race-hero-empty')) document.getElementById('race-hero-empty').style.display = 'none';
-    if(gapCard) gapCard.style.display = 'none';
-    if(fitnessCard) fitnessCard.style.display = '';
-    if(raceZone) raceZone.style.display = 'none'; // Sub4h zone não faz sentido sem meta de prova
-    // v0.9.1: oculta também fonte de dados e histórico de longões — específicos de previsão de prova
-    if(srcTitle) srcTitle.style.display = 'none';
-    if(srcCard) srcCard.style.display = 'none';
-    if(histTitle) histTitle.style.display = 'none';
-    if(histList) histList.style.display = 'none';
-    renderFitnessEvolution();
-    return; // não calcula previsão de prova
-  } else {
-    if(heroRace) heroRace.style.display = '';
-    if(heroFitness) heroFitness.style.display = 'none';
-    if(gapCard) gapCard.style.display = '';
-    if(fitnessCard) fitnessCard.style.display = 'none';
-    if(raceZone) raceZone.style.display = '';
-    if(srcTitle) srcTitle.style.display = '';
-    if(srcCard) srcCard.style.display = '';
-    if(histTitle) histTitle.style.display = '';
-    if(histList) histList.style.display = '';
-  }
-
-  // Adjust labels dynamically based on configured race
-  const raceName = state.config.raceName || 'Maratona';
-  const heroLabel = document.getElementById('race-hero-label');
-  if(heroLabel) heroLabel.textContent = `Previsão atual · ${raceName}`;
-
   // Only use REAL workouts (not planned, not mock) with actual pace
   const realLongoes = state.workouts
     .filter(w=>w.type==='long'&&!w.planned&&w.dist>0&&w.pace&&paceToSec(w.pace)>0)
@@ -2672,41 +2323,7 @@ function renderRaceIQ() {
     return Math.round(avgPaceSec * 1.055 * 42.195);
   })() : 0;
 
-  // v0.9.2.2 (P0): flag única de verdade — controla TUDO relacionado a previsão.
-  // Se false, nenhum valor de previsão (Gap, Race Pace, pace previsto, Sub-X) pode aparecer.
-  const hasRacePrediction = pred > 0;
-
-  // Gap card e Race Pace zone só existem visualmente quando há previsão válida.
-  // Antes: ficavam sempre visíveis (até com dado hardcoded "5:41/km" nunca atualizado).
-  if(gapCard)  gapCard.style.display  = hasRacePrediction ? '' : 'none';
-  if(raceZone) raceZone.style.display = hasRacePrediction ? '' : 'none';
-
-  // Target time: usa o que foi definido no onboarding/config, com fallback pro sub4 clássico
-  const targetTimeStr = state.athleteProfile?.targetTime || '';
-  const targetSec = targetTimeStr ? parseTargetTimeToSec(targetTimeStr) : (4*3600-120);
-  const targetLabel = targetTimeStr || 'sub 3h58';
-  const targetPaceSec = targetSec / 42.195;
-  const pMin = Math.floor(targetPaceSec/60);
-  const pSec = Math.round(targetPaceSec%60);
-  const targetPaceStr = `${pMin}:${String(pSec).padStart(2,'0')}/km`;
-
-  const gapLabel = document.getElementById('race-gap-label');
-  if(gapLabel) gapLabel.textContent = `Gap para o ${targetLabel}`;
-  const targetLine = document.getElementById('race-target-line');
-  // v0.9.2.2 (P0): a linha "Meta: sub-X · Pace: ..." só aparece junto com uma previsão válida —
-  // caso contrário some por completo (fica dentro do hero, que já vira a tela de "mais dados").
-  if(targetLine) {
-    targetLine.style.display = hasRacePrediction ? '' : 'none';
-    if(hasRacePrediction) {
-      targetLine.innerHTML = `Meta: <strong style="color:var(--accent)">${targetLabel}</strong> · Pace: <strong style="color:var(--teal)">${targetPaceStr}</strong>`;
-    }
-  }
-  const raceZoneName = document.getElementById('race-pace-zone-name');
-  if(raceZoneName) raceZoneName.textContent = `Race Pace · ${targetLabel}`;
-  const raceZoneVal = document.getElementById('race-pace-zone-val');
-  // v0.9.2.2 (P0): antes esse valor era texto fixo no HTML ("5:41 /km"), nunca atualizado —
-  // agora reflete o pace real da meta, e só é renderizado quando hasRacePrediction é true.
-  if(raceZoneVal && hasRacePrediction) raceZoneVal.textContent = `${targetPaceStr.replace('/km',' /km')}`;
+  const targetSec = 4*3600-120; // 3h58
 
   // Source card
   const srcEl = document.getElementById('race-source-card');
@@ -2735,27 +2352,23 @@ function renderRaceIQ() {
     const gap = pred - targetSec;
     if(gap>0) {
       const gapMin = Math.floor(gap/60);
-      document.getElementById('race-gap-badge').textContent = `+${gapMin}min da meta`;
+      document.getElementById('race-gap-badge').textContent = `+${gapMin}min do sub4`;
       document.getElementById('race-gap-bar').style.width = Math.min(100, Math.max(5, (1-(gap/(2.5*3600)))*100))+'%';
-      document.getElementById('race-gap-desc').textContent = `Faltam ${gapMin} minutos para a meta. Baseado em ${realLongoes.length} longão(s) real(is).`;
+      document.getElementById('race-gap-desc').textContent = `Faltam ${gapMin} minutos para o sub 4h. Baseado em ${realLongoes.length} longão(s) real(is).`;
     } else {
-      document.getElementById('race-gap-badge').textContent = '✓ Meta batida!';
+      document.getElementById('race-gap-badge').textContent = '✓ Sub 4h!';
       document.getElementById('race-gap-bar').style.width = '100%';
-      document.getElementById('race-gap-desc').textContent = 'Previsão dentro da meta com base nos seus longões reais!';
+      document.getElementById('race-gap-desc').textContent = 'Previsão abaixo de 4h com base nos seus longões reais!';
     }
     document.getElementById('race-basis').textContent =
       `${realLongoes.length} longão(s) real(is)${realLongoes.some(w=>w.stravaId)?' · Strava':' · manual'}`;
+  } else {
+    document.getElementById('race-predicted').textContent = '--:--';
+    document.getElementById('race-gap-badge').textContent = 'Sem dados';
+    document.getElementById('race-gap-bar').style.width = '0';
+    document.getElementById('race-gap-desc').textContent = 'Importe longões do Strava ou registre com pace para calcular.';
+    document.getElementById('race-basis').textContent = 'Sem longões com pace real';
   }
-
-  // v0.9.2.2 (P0): troca entre os dois heroes por visibilidade — nunca mais via innerHTML
-  // destrutivo. Isso elimina o crash "Cannot set properties of null" em re-renders e garante
-  // que, sem previsão válida, NENHUM valor de previsão fique visível (Gap, Race Pace, Sub-X).
-  const heroEmptyEl = document.getElementById('race-hero-empty');
-  if(heroRace)     heroRace.style.display     = hasRacePrediction ? '' : 'none';
-  if(heroEmptyEl)  heroEmptyEl.style.display  = hasRacePrediction ? 'none' : '';
-
-  // v0.9.3.1 (P0): a checagem de zoneReadiness (Z1-Z4) já roda no topo da função
-  // agora — ver comentário lá. Removido daqui para não duplicar/redeclarar.
 
   // Longão history — only real data, never planned
   const ll = document.getElementById('race-longao-list');
@@ -2779,137 +2392,9 @@ function renderRaceIQ() {
   }
 }
 
-// v0.9.1: helper para converter "Sub 4h" / "3:58" / "sub 3h58" em segundos
-function parseTargetTimeToSec(str) {
-  if(!str) return 4*3600-120;
-  const cleaned = str.toLowerCase().replace('sub','').trim();
-  // Format "Xh Y" or "Xh" or "X:YY"
-  const hMatch = cleaned.match(/(\d+)\s*h\s*(\d*)/);
-  if(hMatch) {
-    const h = parseInt(hMatch[1])||0;
-    const m = parseInt(hMatch[2])||0;
-    return h*3600 + m*60;
-  }
-  const colonMatch = cleaned.match(/(\d+):(\d+)/);
-  if(colonMatch) {
-    return parseInt(colonMatch[1])*3600 + parseInt(colonMatch[2])*60;
-  }
-  return 4*3600-120;
-}
-
-// v0.9.1: métricas de evolução para objetivo "Saúde e condicionamento" — sem previsão de prova
-function renderFitnessEvolution() {
-  const ws = weekStart(today());
-  const fourWeeksAgo = new Date(ws+'T12:00:00'); fourWeeksAgo.setDate(fourWeeksAgo.getDate()-28);
-  const fourWeeksAgoStr = fourWeeksAgo.toISOString().split('T')[0];
-
-  const recentRuns = state.workouts
-    .filter(w=>!w.planned && w.dist>0 && w.date>=fourWeeksAgoStr)
-    .sort((a,b)=>a.date.localeCompare(b.date));
-
-  const totalKm = recentRuns.reduce((a,w)=>a+(w.dist||0),0);
-  document.getElementById('fitness-weekly-km').textContent = totalKm.toFixed(1);
-
-  // Consistency: % of weeks with at least 2 runs in the last 4 weeks
-  const weekBuckets = {};
-  recentRuns.forEach(w=>{
-    const wk = weekStart(w.date);
-    weekBuckets[wk] = (weekBuckets[wk]||0)+1;
-  });
-  const activeWeeks = Object.values(weekBuckets).filter(c=>c>=2).length;
-  const consistencyPct = Math.round((activeWeeks/4)*100);
-  const consistencyLine = document.getElementById('fitness-consistency-line');
-  if(consistencyLine) consistencyLine.innerHTML = `Consistência: <strong style="color:var(--accent)">${consistencyPct}%</strong> · ${activeWeeks}/4 semanas ativas`;
-
-  // Evolution card — average pace per week, trend
-  const runsWithPace = recentRuns.filter(w=>w.pace&&paceToSec(w.pace)>0);
-  const evoEl = document.getElementById('fitness-evolution-content');
-  if(!evoEl) return;
-
-  if(runsWithPace.length===0) {
-    evoEl.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--text3)">Registre treinos com pace para ver sua evolução.</div>`;
-    return;
-  }
-
-  // Group by week, average pace
-  const weeklyPace = {};
-  runsWithPace.forEach(w=>{
-    const wk = weekStart(w.date);
-    if(!weeklyPace[wk]) weeklyPace[wk] = [];
-    weeklyPace[wk].push(paceToSec(w.pace));
-  });
-  const weeks = Object.keys(weeklyPace).sort();
-  const rows = weeks.map(wk=>{
-    const avg = weeklyPace[wk].reduce((a,b)=>a+b,0)/weeklyPace[wk].length;
-    return { week: wk, avgPaceSec: avg };
-  });
-
-  evoEl.innerHTML = rows.map(r=>{
-    const min = Math.floor(r.avgPaceSec/60);
-    const sec = Math.round(r.avgPaceSec%60);
-    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:.5px solid var(--border);font-family:var(--mono);font-size:11px">
-      <span style="color:var(--text3)">${formatDate(r.week)}</span>
-      <span style="color:var(--text2)">${min}:${String(sec).padStart(2,'0')}/km</span>
-    </div>`;
-  }).join('');
-}
-
 // ==================== GEMINI KEY ====================
-// ════════════════════════════════════════════════════════════════════════
-// AI_BACKEND_MODE — camada de abstração (v0.9.2.1-LOCAL)
-// ════════════════════════════════════════════════════════════════════════
-// 'LOCAL_GEMINI'    → chamada direta ao Gemini com key local (ATIVO — plano Spark)
-// 'FIREBASE_BACKEND' → Cloud Functions + Secret Manager (requer plano Blaze)
-//
-// Para reativar o backend quando migrar para o plano Blaze, troque o valor
-// abaixo para 'FIREBASE_BACKEND'. Nenhuma outra mudança de código é
-// necessária — toda a lógica de IA passa por callCoachAI() e
-// generateStrategyAI(), que já sabem rotear para os dois modos.
-// ════════════════════════════════════════════════════════════════════════
-const AI_BACKEND_MODE = 'LOCAL_GEMINI';
-
-// ════════════════════════════════════════════════════════════════════════
-// v0.9.3 (P1) — TESTER_MODE: facilita os testes dos 5 usuários iniciais sem
-// exigir que cada um configure sua própria Gemini API Key. Projeto continua
-// em Firebase Spark — SEM Cloud Functions, SEM backend, SEM Blaze. A key
-// fica embutida no app e é usada apenas como fallback (a key do próprio
-// usuário, se configurada, sempre tem prioridade).
-//
-// ⚠️ REMOVER ANTES DA VERSÃO PÚBLICA — uma key embutida no bundle do cliente
-// é visível a qualquer pessoa que inspecione o código-fonte. Isso só é
-// aceitável temporariamente, para um grupo pequeno e controlado de testers.
-// ════════════════════════════════════════════════════════════════════════
-const TESTER_MODE = true; // ⚠️ Remover antes da versão pública.
-// v0.9.3.1 (P0, atualizado após teste isolado real): as duas tentativas
-// anteriores de key falharam por serem credenciais genuinamente inválidas
-// para esse uso (uma era a Web API Key do Firebase, restrita a serviços do
-// Firebase; outra era um token de sessão que nunca funcionou nem no AI
-// Studio). NÃO é verdade que toda key começando com "AQ." seja inválida —
-// essa suposição (de uma rodada anterior) foi refutada por teste real:
-// uma key "AQ.xxx" gerada oficialmente em aistudio.google.com/app/apikey
-// retornou 200 via ?key= (o mesmo método já usado em callGeminiDirect()).
-// O formato do prefixo NÃO é um indicador confiável de validade — só o
-// teste real (POST generateContent) confirma. Key abaixo já validada (200).
-const _TESTER_GEMINI_KEY = 'AQ.Ab8RN6Ig6IOdiJgonPJGtSFy3OQEQj0P7_ZXKCz7PM0ForudYQ'; // ⚠️ Validada com 200 em teste isolado. Remover antes da versão pública.
-
-// v0.9.3.1 (P0): validação de formato — avisa alto e claro no console se o
-// TESTER_MODE estiver ativo com uma key vazia ou com formato incorreto, em
-// vez de deixar o erro só aparecer pro usuário final dentro do chat do Coach.
-if(TESTER_MODE) {
-  if(!_TESTER_GEMINI_KEY) {
-    console.warn('⚠️ TESTER_MODE está ativo, mas _TESTER_GEMINI_KEY está vazia. O Coach IA vai falhar para usuários sem key própria.');
-  } else if (!_TESTER_GEMINI_KEY || _TESTER_GEMINI_KEY.length < 20) {
-    console.warn('TESTER_GEMINI_KEY inválida');
-  }
-}
-
 const GEMINI_KEY = 'pacemaker_gemini_key';
-function getGeminiKey() {
-  const own = localStorage.getItem(GEMINI_KEY) || '';
-  if(own) return own; // key do próprio usuário sempre tem prioridade
-  if(TESTER_MODE && _TESTER_GEMINI_KEY) return _TESTER_GEMINI_KEY; // ⚠️ Remover antes da versão pública.
-  return '';
-}
+function getGeminiKey() { return localStorage.getItem(GEMINI_KEY)||''; }
 function hasGeminiKey() { return !!getGeminiKey(); }
 
 function toggleGeminiKeyVisibility() {
@@ -2918,94 +2403,21 @@ function toggleGeminiKeyVisibility() {
 }
 
 function loadGeminiKeyField() {
-  const k = localStorage.getItem(GEMINI_KEY) || ''; // v0.9.3: só preenche o campo com a key PRÓPRIA do usuário, nunca com a embutida de teste
+  const k = getGeminiKey();
   const el = document.getElementById('cfg-gemini-key');
   if(el && k) el.value = k;
-
-  // v0.9.2.1-LOCAL: ajusta a cópia da UI conforme o modo ativo, sem alterar
-  // a estrutura visual do card — só o texto, para não mentir pro usuário.
-  const intro = document.getElementById('coach-ai-intro');
-  const toggleBtn = document.getElementById('adv-gemini-toggle-btn');
-  const toggleLabel = document.getElementById('adv-gemini-toggle-label');
-  const note = document.getElementById('advanced-gemini-note');
-  const keyLabel = document.getElementById('gemini-key-label');
-  const section = document.getElementById('advanced-gemini-section');
-
-  // v0.9.3 (P1): TESTER_MODE — não expõe nenhuma UI de configuração de key.
-  // O Coach IA já funciona via key embutida; o card vira só um indicador de status.
-  if(TESTER_MODE) {
-    if(intro) intro.textContent = 'O Coach IA já está ativo para os testers — nenhuma configuração necessária.';
-    if(toggleBtn) toggleBtn.style.display = 'none';
-    if(section) section.style.display = 'none';
-    updateGeminiBadge();
-    return;
-  }
-
-  if(AI_BACKEND_MODE === 'LOCAL_GEMINI') {
-    if(intro) intro.textContent = 'O Coach IA roda direto no seu navegador com a Gemini API — configure sua key gratuita para ativar.';
-    if(toggleBtn) toggleBtn.style.display = 'none'; // não há nada "avançado" a esconder — a key é obrigatória aqui
-    if(note) note.innerHTML = 'Crie sua key gratuita no Google AI Studio. Fica salva só neste dispositivo, nunca é enviada a nenhum servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a>';
-    if(keyLabel) keyLabel.textContent = 'Gemini API Key';
-    if(section) section.style.display = 'block'; // sempre visível — é o único caminho de IA neste modo
-  } else {
-    if(intro) intro.textContent = 'O Pacemaker já vem com um Coach IA nativo — basta estar logado, sem precisar configurar nenhuma chave.';
-    if(toggleBtn) toggleBtn.style.display = 'block';
-    if(toggleLabel) toggleLabel.textContent = '⚙️ Avançado: usar minha própria Gemini API Key';
-    if(note) note.innerHTML = 'Opcional. Use sua própria key apenas se quiser um modelo diferente do nativo, ou se preferir não depender do backend do Pacemaker. Salva só no dispositivo, nunca enviada ao servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a>';
-    if(keyLabel) keyLabel.textContent = 'Gemini API Key (opcional)';
-    if(section) section.style.display = 'none';
-  }
-
   updateGeminiBadge();
-}
-
-function toggleAdvancedGeminiSection() {
-  const sec = document.getElementById('advanced-gemini-section');
-  const label = document.getElementById('adv-gemini-toggle-label');
-  if(!sec) return;
-  const isHidden = sec.style.display === 'none';
-  sec.style.display = isHidden ? 'block' : 'none';
-  if(label) label.textContent = isHidden
-    ? '⚙️ Ocultar configuração avançada'
-    : '⚙️ Avançado: usar minha própria Gemini API Key';
 }
 
 function updateGeminiBadge() {
   const badge = document.getElementById('gemini-badge');
   const coachBadge = document.getElementById('coach-ai-badge');
-  const nativeStatusEl = document.getElementById('coach-native-status');
-  // v0.9.2.1-LOCAL: "nativo sem key" só existe no modo FIREBASE_BACKEND.
-  // No modo LOCAL_GEMINI (ativo agora), o Coach depende da key configurada.
-  const nativeAvailable = AI_BACKEND_MODE === 'FIREBASE_BACKEND' && !!(state.user && window._pmCallCoachChat);
-  // v0.9.3 (P1): distingue "usuário configurou a própria key" de "TESTER_MODE
-  // está usando a key embutida" — sem expor esse detalhe na UI (a key embutida
-  // nunca aparece, só o resultado: Coach IA ativo).
-  const hasOwnKey = !!localStorage.getItem(GEMINI_KEY);
-  const aiActive = nativeAvailable || hasGeminiKey();
-  if(aiActive) {
-    if(badge) {
-      badge.textContent = hasOwnKey ? '✓ key ativa' : '✓ ativo';
-      badge.style.color='var(--teal)'; badge.style.borderColor='rgba(46,232,196,0.3)'; badge.style.background='var(--teal-dim)';
-    }
-    if(coachBadge) { coachBadge.textContent='✨ Coach IA'; coachBadge.style.color='var(--teal)'; coachBadge.style.background='var(--teal-dim)'; coachBadge.style.borderColor='rgba(46,232,196,0.3)'; }
+  if(hasGeminiKey()) {
+    if(badge) { badge.textContent='✓ ativo'; badge.style.color='var(--teal)'; badge.style.borderColor='rgba(46,232,196,0.3)'; badge.style.background='var(--teal-dim)'; }
+    if(coachBadge) { coachBadge.textContent='✨ Gemini'; coachBadge.style.color='var(--teal)'; coachBadge.style.background='var(--teal-dim)'; coachBadge.style.borderColor='rgba(46,232,196,0.3)'; }
   } else {
     if(badge) { badge.textContent='inativo'; badge.style.color='var(--text3)'; badge.style.borderColor='var(--border2)'; badge.style.background='transparent'; }
     if(coachBadge) { coachBadge.textContent='offline'; coachBadge.style.color='var(--accent)'; coachBadge.style.background='var(--accent-dim)'; coachBadge.style.borderColor='rgba(232,245,90,0.3)'; }
-  }
-  if(nativeStatusEl) {
-    if(TESTER_MODE) {
-      nativeStatusEl.textContent = '✓ Coach IA ativo (modo testers).';
-      nativeStatusEl.style.color = 'var(--teal)';
-    } else if(hasOwnKey) {
-      nativeStatusEl.textContent = '🔑 Coach IA ativo com sua Gemini API Key.';
-      nativeStatusEl.style.color = 'var(--teal)';
-    } else if(nativeAvailable) {
-      nativeStatusEl.textContent = '✓ Coach IA nativo ativo — pronto para usar.';
-      nativeStatusEl.style.color = 'var(--teal)';
-    } else {
-      nativeStatusEl.textContent = 'Configure sua Gemini API Key abaixo para ativar o Coach IA.';
-      nativeStatusEl.style.color = 'var(--text3)';
-    }
   }
 }
 
@@ -3077,44 +2489,11 @@ function clearGeminiKey() {
 }
 
 // ==================== GEMINI SYSTEM PROMPT ====================
-// ════════════════════════════════════════════════════════════
-// v0.9.1 — DOCUMENTAÇÃO: campos que alimentam o prompt do Coach AI
-// ════════════════════════════════════════════════════════════
-// state.athleteProfile:
-//   - goal            → linha "Objetivo" do prompt
-//   - targetTime       → usado em Race IQ para meta de pace (não duplicado no prompt, goal já cobre)
-//   - strengthPref     → linha "Preferência de musculação"
-//   - longRunPref      → linha "Longão máximo preferido"
-//   - injuryHistory    → linha "Lesões/Histórico"
-//   - notes            → linha "Observações do atleta"
-//
-// state.config:
-//   - goalType         → decide se prompt fala de prova ou de saúde/condicionamento
-//   - raceName/raceDate → linha "Prova" (omitida se goalType === 'health')
-//   - workSchedule     → linha "Rotina de trabalho" (5x2/6x1/2x2/12x36/custom)
-//   - weekGoal         → linha "Meta" no estado atual
-//
-// Tudo isso é montado em buildSystemPrompt() e enviado como system_instruction
-// para a API do Gemini em sendToGemini().
 function buildSystemPrompt() {
   const c = buildCoachContext();
   const p = state.athleteProfile||{};
   const cfg = state.config||{};
-  const isHealthGoal = cfg.goalType === 'health';
-
-  // v0.9.1: goalLabel usa o texto real definido pelo atleta (onboarding ou Configurações),
-  // sem mapeamento fixo desatualizado
-  const goalLabel = p.goal || (isHealthGoal ? 'saúde e condicionamento físico' : 'não definido');
-
-  // v0.9.1: descrição dinâmica da rotina de trabalho — sem mais "2x2" hardcoded
-  const scaleLabels = {
-    '5x2': '5x2 (trabalha de segunda a sexta)',
-    '6x1': '6x1 (6 dias de trabalho, 1 de folga)',
-    '2x2': '2x2 (2 dias de trabalho, 2 dias de folga)',
-    '12x36': '12x36 (1 dia de trabalho, 36h de folga)',
-    'custom': 'rotina personalizada'
-  };
-  const scaleDesc = scaleLabels[cfg.workSchedule] || 'rotina não definida';
+  const goalLabel = {sub4:'maratona sub 4 horas',sub3h30:'maratona sub 3h30',pr:'bater o PR',first_marathon:'completar a primeira maratona',finish:'só terminar bem','':'não definido'}[p.goal||'']||p.goal||'não definido';
 
   const h = c.history8w;
   const evolution = h.map(w => `${w.label}: ${w.km}km (Adh: ${w.adherence}%, Long: ${w.longDist}km, Pace: ${secsToPaceStr(w.pace)||'--'})`).join('\n');
@@ -3126,41 +2505,27 @@ function buildSystemPrompt() {
     .map(w=>`${w.date} | ${w.type}${w.dist?' | '+w.dist+'km':''}${w.pace?' | '+w.pace+'/km':''}${w.hr?' | '+w.hr+'bpm':''}${w.rpe?' | RPE '+w.rpe+'/10':''}${w.fatigue?' | fadiga '+w.fatigue+'/5':''}`)
     .join('\n');
 
-  // v0.9.1: linha de prova/objetivo varia conforme o tipo de meta do atleta
-  const raceLine = isHealthGoal
-    ? `- Foco: saúde e condicionamento — sem prova específica como meta`
-    : `- Prova: ${cfg.raceName||'não definida'} em ${cfg.raceDate||'data não configurada'} (${c.days} dias)`;
-
-  // v0.9.2: estratégia inicial gerada pela IA — fonte de verdade compartilhada com o Planner
-  const strategyBlock = state.aiStrategy?.rationale
-    ? `\nESTRATÉGIA INICIAL (gerada por IA em ${state.aiStrategy.generatedAt?.slice(0,10)||'?'}):\n- Volume base: ${state.aiStrategy.weeklyVolume}km/sem · Sessões: ${state.aiStrategy.sessions} · Longão: ${state.aiStrategy.longRun}km\n- Raciocínio: ${state.aiStrategy.rationale}\n- IMPORTANTE: Mantenha consistência com esta estratégia ao sugerir planos. O Planner usa a mesma lógica.`
-    : '';
-
   return `Você é o Coach AI do Pacemaker, treinador pessoal de corrida e musculação de ${c.athleteName}.
 
 PERFIL DO ATLETA:
 - Objetivo: ${goalLabel}
-${raceLine}
-- Rotina de trabalho: ${scaleDesc}
-- Musculação: ${p.doesStrength === false ? 'NÃO treina musculação — nunca sugira nem assuma treino de força para este atleta' : (p.strengthPref ? `treina musculação, divisão ${p.strengthPref}` : 'treina musculação, sem divisão definida')}
-- Longão máximo preferido: ${p.longRunPref ? p.longRunPref+'km' : 'automático (sem limite definido)'}
-- Lesões/Histórico: ${p.injuryHistory || 'não informado'}
-- Observações do atleta: ${p.notes || 'nenhuma observação'}
-${strategyBlock}
+- Prova: ${cfg.raceName||'Maratona'} em ${cfg.raceDate||'data não configurada'} (${c.days} dias)
+- Escala: 2x2 (2 dias trabalho / 2 dias folga)
+- Lesões/Obs: ${p.injuryHistory||'nenhum'} | ${p.notes||'nenhuma'}
+
 CONTEXTO DE EVOLUÇÃO (8 SEMANAS):
 ${evolution}
 
 ESTADO ATUAL (${today()}):
 - Semana: ${c.wkm}km | Meta: ${cfg.weekGoal||52}km | Aderência: ${c.adh}%
 - Prontidão: ${c.rs}/100 | Fadiga Recente: ${c.fatigueTrend||'--'}/5 | RPE: ${c.rpeTrend||'--'}/10
-${isHealthGoal ? '' : `- Previsão maratona: ${c.pred?secToTime(c.pred):'sem dados'}`}
+- Previsão maratona: ${c.pred?secToTime(c.pred):'sem dados'}
 
 DIRETRIZES DE COACHING:
 1. FOCO NA EVOLUÇÃO: Analise a tendência das últimas 8 semanas. O atleta está progredindo volume? O pace está baixando?
 2. SEGURANÇA: Se o volume subiu >15% ou a fadiga está >4, exija "deload".
 3. TÉCNICA: Dê números exatos (distância, pace, FC). Regra 80/20.
 4. ESTILO: Seja mentor. Elogie consistência (adh >90%). Seja socrático se falhar.
-${isHealthGoal ? '5. Sem objetivo de prova, foque em consistência, saúde articular e prazer em treinar — não pressione por performance.' : ''}
 
 Máximo 4 parágrafos.
 
@@ -3173,15 +2538,80 @@ REGRAS DE COMPORTAMENTO:
 - Pode e deve DISCORDAR do atleta quando os dados indicarem risco
 - Se fadiga >= 4.0 ou prontidão <= 50: recomende recuperação mesmo se o atleta pedir treino pesado
 - Se aderência < 60%: questione pedidos de aumento de volume
-${isHealthGoal ? '' : '- Se dias para a prova <= 14: enforça taper independente do que o atleta perguntar'}
+- Se dias para a prova <= 14: enforça taper independente do que o atleta perguntar
 - Justifique cada recomendação com dados reais do histórico
 - Dê números exatos: distância, pace, FC, séries, recuperação
 - Máximo 4 parágrafos por resposta
-- Considere sempre a rotina de trabalho do atleta (${scaleDesc}) ao sugerir treinos`;
+- Considere sempre a escala 2x2 ao sugerir treinos`;
 }
 
 // ==================== SEND TO GEMINI ====================
-// (sendToGemini foi substituída por callGeminiDirect() — ver camada de abstração callCoachAI() abaixo)
+async function sendToGemini(userText) {
+  const key = getGeminiKey();
+  const systemPrompt = buildSystemPrompt();
+
+  // Build conversation history for Gemini (last 10 messages, excluding current)
+  const history = state.chatHistory.slice(-11, -1).map(m => ({
+    role: m.role === 'coach' ? 'model' : 'user',
+    parts: [{ text: m.text }]
+  }));
+
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [
+      ...history,
+      { role: 'user', parts: [{ text: userText }] }
+    ],
+    generationConfig: {
+      maxOutputTokens: 8192,
+      temperature: 0.7,
+      topP: 0.9,
+      thinkingConfig: { thinkingBudget: 0 }
+    },
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+    ]
+  };
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+      { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }
+    );
+    removeTypingIndicator();
+    if(res.ok) {
+      const data = await res.json();
+      const reply =
+        data.candidates?.[0]?.content?.parts
+          ?.filter(p => !p.thought)
+          .map(p => p.text || '')
+          .join('') ||
+            'Não recebi resposta do Gemini.';
+      state.chatHistory.push({role:'coach', text: reply});
+    } else {
+      const err = await res.json();
+      const msg = err.error?.message||'Erro desconhecido';
+      if(msg.includes('quota')||msg.includes('RESOURCE_EXHAUSTED')) {
+        state.chatHistory.push({role:'coach', text:'⚠️ Limite de quota do Gemini atingido. Voltando ao modo offline temporariamente.'});
+      } else if(msg.includes('API_KEY_INVALID')) {
+        state.chatHistory.push({role:'coach', text:'⚠️ Gemini API key inválida. Verifique em Configurações.'});
+        localStorage.removeItem(GEMINI_KEY); updateGeminiBadge();
+      } else {
+        state.chatHistory.push({role:'coach', text:`⚠️ Gemini: ${msg}. Tente novamente.`});
+      }
+    }
+  } catch(e) {
+    removeTypingIndicator();
+    // Network error — fall back to mock silently
+    const fallback = getMockReply(userText.toLowerCase());
+    state.chatHistory.push({role:'coach', text:`📴 Sem conexão — resposta offline:\n\n${fallback}`});
+  }
+  if(state.chatHistory.length>60) state.chatHistory=state.chatHistory.slice(-60);
+  save(); renderChatMsgs();
+}
 
 // ==================== COACH AI (MOCK INTELIGENTE) ====================
 function get8WeekStats() {
@@ -3352,7 +2782,7 @@ function renderCoachContext() {
   }
 
   if(state.chatHistory.length===0) {
-    const name = state.config.name||'Atleta';
+    const name = state.config.name||'Caio';
     state.chatHistory.push({role:'coach', text:`Olá, ${name}! Seu coach está pronto.\n\nSemana passada: ${c.lastWeekKm}km. Esta semana: ${c.wkm}km. Prontidão: ${c.rs}/100.\n\n${c.days!=='--'?`Faltam ${c.days} dias para a maratona.`:'Configure a data da maratona em Configurações.'}\n\nUse o card "Planejar semana" acima para montar seu treino no calendário, ou me faça uma pergunta.`});
     save();
   }
@@ -3690,10 +3120,6 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   const priorityFactor = {volume:1.1, rhythm:1.0, recovery:0.85}[params.priority]||1;
   const doneKm = weekDays.filter(d=>d.done).reduce((a,d)=>a+(d.done.dist||0),0);
   let remaining = Math.max(0, kmGoal-doneKm);
-  // Bug fix: planKm é o volume a DISTRIBUIR nos dias livres (exclui o que já foi corrido).
-  // Sem isso, semanas com dias já completados (ex: segunda já feita) somavam
-  // proporções calculadas sobre kmGoal total + o km já realizado, gerando excesso.
-  const planKm = remaining;
   const targetLong = Math.min(36, Math.round(params.long * fatigueMultiplier));
   const noteLC = notes.toLowerCase();
   const hasRace = noteLC.includes('prova')||noteLC.includes('race');
@@ -3713,7 +3139,7 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     freeOffDays.find(d=>[6,0].includes(new Date(d.date+'T12:00:00').getDay()))||freeOffDays[0]
   ) : null;
   if(longDay) {
-    const dist = Math.min(targetLong, Math.round(planKm * 0.45));
+    const dist = Math.min(targetLong, Math.round(kmGoal * 0.45));
     longDay.workout = {
       type:'long', title:`Longão ${dist}km`, dist, pace:'6:20–6:45',
       desc:`${dist}km em Z2 · pace 6:20–6:45 · FC <145bpm`,
@@ -3731,7 +3157,7 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   const qualityDays = freeOffDays.filter(d=>d!==longDay).slice(0, qualityCount);
   qualityDays.forEach((d,qi)=>{
     if(feeling==='pain'||feeling==='tired') return;
-    const dist = Math.round(Math.min(14, Math.max(8, planKm * 0.2)));
+    const dist = Math.round(Math.min(14, Math.max(8, kmGoal * 0.2)));
     if(wantIntervals||qi===1) {
       d.workout={type:'interval',title:`Tiros ${dist}km`,dist,pace:'5:00–5:15',
         desc:`2km aq + ${dist-4}x1km (5:00–5:15) + rec 90s + 2km volta`,
@@ -3746,35 +3172,17 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   });
 
   // 3. Work days (Z2 portions)
-  // v0.9.3 (P0): musculação só é assumida se o atleta EXPLICITAMENTE optou por ela.
-  // Antes, qualquer dia de trabalho sem corrida planejada virava "Musculação X" —
-  // mesmo para corredores que nunca disseram que treinam força.
-  const doesStrength = ctx.profile?.doesStrength !== false; // default true preserva perfis legados (ver migração em load())
   const workRunKms = smartWorkDayDistribution(freeWorkDays.length, remaining, workrunKm, fatigueMultiplier);
   freeWorkDays.forEach((d,i)=>{
-    const session = doesStrength ? STRENGTH_SESSIONS[strengthRotIdx%3] : null;
-    if(doesStrength) strengthRotIdx++;
+    const session=STRENGTH_SESSIONS[strengthRotIdx%3]; strengthRotIdx++;
     const km=workRunKms[i]||0;
     if(workrunMode==='none'||km===0) {
-      if(doesStrength) {
-        d.workout={type:'strength',title:`Musculação ${session.label.split('—')[0].trim()}`,
-          dist:0,pace:'',desc:session.label,steps:session.steps};
-      } else {
-        // Sem musculação: dia de trabalho sem corrida planejada vira descanso ativo leve,
-        // não fica "vazio" silenciosamente nem assume um treino que o atleta não pediu.
-        d.workout={type:'recovery',title:'Descanso',dist:0,pace:'',
-          desc:'Dia de trabalho — sem treino de força ou corrida hoje.',
-          steps:[{icon:'🛌',text:'Recuperação',detail:'Sem musculação configurada — ajuste em Configurações se quiser incluir.'}]};
-      }
-    } else if(doesStrength) {
+      d.workout={type:'strength',title:`Musculação ${session.label.split('—')[0].trim()}`,
+        dist:0,pace:'',desc:session.label,steps:session.steps};
+    } else {
       d.workout={type:'z2',title:`Musculação + Z2 ${km}km`,dist:km,pace:'6:20–6:40',
         desc:`Manhã: ${session.label} · Noite: ${km}km Z2`,
         steps:[{icon:'💪',text:`Musculação — ${session.label}`,detail:'40min · manhã'},{icon:'🏃',text:`Z2 — ${km}km`,detail:`pace 6:20–6:40 · FC <140bpm · noite`}]};
-      remaining -= km;
-    } else {
-      d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:'6:20–6:40',
-        desc:`${km}km Z2 · pace 6:20–6:40 · FC <140bpm`,
-        steps:[{icon:'🏃',text:`${km}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}]};
       remaining -= km;
     }
   });
@@ -3790,8 +3198,8 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     remaining -= km;
   });
 
-  // 5. Load balance: adjust Z2 days to hit km goal (usa planKm = volume a distribuir, não o total da semana)
-  balanceWeeklyLoad(plan, planKm, fatigueMultiplier);
+  // 5. Load balance: adjust Z2 days to hit km goal
+  balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier);
 
   // 6. Race adjustment
   if(hasRace&&freeDays.length>0) {
@@ -4229,21 +3637,12 @@ function previewConservativePlan() {
 
   pendingConservativePlan = {...pendingPlan, plan:conservPlan, kmGoal:Math.round(kmGoal*0.82)};
 
-  // v0.9.3.1 (P1): esta linha dizia "Musculação mantida" incondicionalmente,
-  // mesmo para atletas com doesStrength===false — texto do sistema assumindo
-  // musculação que o atleta nunca pediu. Agora só aparece se a divisão de
-  // musculação realmente faz parte do plano do atleta.
-  const athleteDoesStrength = state.athleteProfile?.doesStrength !== false;
-  const strengthLine = athleteDoesStrength
-    ? `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação A→B→C)</div>`
-    : '';
-
   // Show conservative preview in modal
   document.getElementById('preview-subtitle').textContent = `🛡 Plano conservador · Semana ${weekLabel}`;
   document.getElementById('preview-list').innerHTML = [
     `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>Volume reduzido ${pctReduction}%: ${stdKm}km → ${consKm}km</div>`,
     qualConverted>0?`<div class="preview-item"><span class="preview-check" style="color:var(--teal)">↓</span>${qualConverted} treino(s) de qualidade → Z2</div>`:'',
-    strengthLine,
+    `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação A→B→C)</div>`,
     `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Longão reduzido para menor impacto</div>`,
   ].join('');
   document.getElementById('preview-summary').innerHTML =
@@ -4292,133 +3691,12 @@ async function sendCoach() {
   state.chatHistory.push({role:'user', text});
   renderChatMsgs();
   addTypingIndicator();
-  await sendToCoach(text);
-  input.disabled = false; sendBtn.disabled = false; input.focus();
-}
-
-// ── v0.9.2.1-LOCAL: roteador do Coach — agora 100% via camada de abstração ──
-async function sendToCoach(userText) {
-  if(!navigator.onLine) { await sendMock(userText); return; }
-
-  const systemPrompt = buildSystemPrompt();
-  const history = state.chatHistory.slice(-11, -1); // exclui a msg atual
-
-  try {
-    const { reply } = await callCoachAI({ systemPrompt, history, userText });
-    removeTypingIndicator();
-    state.chatHistory.push({role:'coach', text: reply});
-    if(state.chatHistory.length>60) state.chatHistory=state.chatHistory.slice(-60);
-    save(); renderChatMsgs();
-  } catch(e) {
-    removeTypingIndicator();
-    if(e.handled) {
-      // Erro já formatado para exibição (ex: quota, key inválida)
-      state.chatHistory.push({role:'coach', text: e.message});
-      save(); renderChatMsgs();
-    } else {
-      // Erro de rede/desconhecido → cai para mock offline
-      console.warn('v0.9.2.1-local: callCoachAI failed, falling back to mock:', e.message);
-      await sendMock(userText);
-    }
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// CAMADA DE ABSTRAÇÃO — AI_BACKEND_MODE
-// ════════════════════════════════════════════════════════════════════════
-// Permite trocar entre LOCAL_GEMINI (key do usuário, direto do navegador)
-// e FIREBASE_BACKEND (Cloud Functions + Secret Manager) sem reescrever
-// o produto. Hoje: LOCAL_GEMINI, porque o projeto está no plano Spark.
-// Para reativar o backend (plano Blaze), troque AI_BACKEND_MODE no topo
-// do arquivo — nenhuma outra mudança de código é necessária.
-// ════════════════════════════════════════════════════════════════════════
-
-// ── callCoachAI({systemPrompt, history, userText}) → {reply} ──
-async function callCoachAI({ systemPrompt, history, userText }) {
-  if(AI_BACKEND_MODE === 'FIREBASE_BACKEND') {
-    // ── [FIREBASE_BACKEND] desativado no plano Spark — preservado para futura reativação ──
-    if(window._pmCallCoachChat) {
-      try {
-        const res = await window._pmCallCoachChat({ systemPrompt, history, userText });
-        return { reply: res.data?.reply || 'Não recebi resposta do Coach.' };
-      } catch(e) {
-        const code = e.code || '';
-        if(code.includes('resource-exhausted')) {
-          const err = new Error('⚠️ Limite de uso do Coach IA atingido por hoje. Tente novamente mais tarde.');
-          err.handled = true; throw err;
-        }
-        throw e; // deixa o caller decidir (ex: cair para LOCAL_GEMINI no futuro)
-      }
-    }
-    throw new Error('Backend Firebase Functions não inicializado.');
-  }
-
-  // ── [LOCAL_GEMINI] modo ativo — chamada direta ao Gemini com key local ──
-  if(!hasGeminiKey()) {
-    const err = new Error('Configure sua Gemini API Key em Configurações para ativar o Coach IA.');
-    err.handled = true; throw err;
-  }
-  return await callGeminiDirect(getGeminiKey(), systemPrompt, history, userText);
-}
-
-// ── Implementação LOCAL_GEMINI: chamada direta à API do Gemini ──
-// (Lógica preservada de sendToGemini() da v0.9.2, agora isolada e reutilizável.)
-async function callGeminiDirect(key, systemPrompt, history, userText) {
-  const geminiHistory = (history || []).map(m => ({
-    role: m.role === 'coach' ? 'model' : 'user',
-    parts: [{ text: m.text }]
-  }));
-
-  const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents: [
-      ...geminiHistory,
-      { role: 'user', parts: [{ text: userText }] }
-    ],
-    generationConfig: {
-      maxOutputTokens: 8192,
-      temperature: 0.7,
-      topP: 0.9,
-      thinkingConfig: { thinkingBudget: 0 }
-    },
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-    ]
-  };
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }
-  );
-
-  if(res.ok) {
-    const data = await res.json();
-    const reply =
-      data.candidates?.[0]?.content?.parts
-        ?.filter(p => !p.thought)
-        .map(p => p.text || '')
-        .join('') ||
-          'Não recebi resposta do Gemini.';
-    return { reply };
-  }
-
-  const errBody = await res.json().catch(()=>({}));
-  const msg = errBody.error?.message || 'Erro desconhecido';
-  let friendly;
-  if(msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-    friendly = '⚠️ Limite de quota do Gemini atingido. Voltando ao modo offline temporariamente.';
-  } else if(msg.includes('API_KEY_INVALID')) {
-    friendly = '⚠️ Gemini API key inválida. Verifique em Configurações.';
-    localStorage.removeItem(GEMINI_KEY); updateGeminiBadge();
+  if(hasGeminiKey() && navigator.onLine) {
+    await sendToGemini(text);
   } else {
-    friendly = `⚠️ Gemini: ${msg}. Tente novamente.`;
+    await sendMock(text);
   }
-  const err = new Error(friendly);
-  err.handled = true;
-  throw err;
+  input.disabled = false; sendBtn.disabled = false; input.focus();
 }
 
 async function sendMock(text) {
@@ -4489,37 +3767,12 @@ function loadConfig() {
   const c = state.config;
   document.getElementById('cfg-race-date').value = c.raceDate||'';
   document.getElementById('cfg-race-name').value = c.raceName||'';
-  document.getElementById('cfg-month-goal').value = c.monthGoal || '';
-  document.getElementById('cfg-week-goal').value = c.weekGoal || '';
+  document.getElementById('cfg-month-goal').value = c.monthGoal||190;
+  document.getElementById('cfg-week-goal').value = c.weekGoal||52;
   document.getElementById('cfg-scale-start').value = c.scaleStart||'';
   document.getElementById('cfg-name').value = c.name||'';
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
-
-  // v0.9.1: oculta o card de prova quando objetivo é "saúde e condicionamento"
-  const raceCard = document.getElementById('cfg-race-card');
-  if(raceCard) raceCard.style.display = (c.goalType === 'health') ? 'none' : '';
-
-  // v0.9.1: rotina de trabalho dinâmica — sem mais "2x2" hardcoded
-  const scaleLabels = {
-    '5x2': '5x2 (Segunda a Sexta)', '6x1': '6x1', '2x2': '2x2',
-    '12x36': '12x36', 'custom': 'Personalizada'
-  };
-  const scaleTitleEl = document.getElementById('cfg-scale-current');
-  const scaleStartGroup = document.getElementById('cfg-scale-start-group');
-  const scaleDescEl = document.getElementById('cfg-scale-desc');
-  const needsRotationDate = ['2x2','12x36'].includes(c.workSchedule);
-  if(scaleTitleEl) scaleTitleEl.textContent = `Atual: ${scaleLabels[c.workSchedule] || 'Não definida'}`;
-  if(scaleStartGroup) scaleStartGroup.style.display = needsRotationDate ? '' : 'none';
-  if(scaleDescEl) {
-    scaleDescEl.textContent = needsRotationDate
-      ? `O app calcula automaticamente seus dias de trabalho e folga com base na escala ${c.workSchedule}.`
-      : '';
-  }
-
-  // v0.9.0: mostra botão de restaurar se existe backup de teste pendente
-  const restoreBtn = document.getElementById('btn-restore-test');
-  if(restoreBtn) restoreBtn.style.display = hasTestBackup() ? '' : 'none';
   loadGeminiKeyField();
   const cid = localStorage.getItem(getStravaCidKey());
   if(cid) document.getElementById('cfg-strava-id').value = cid;
@@ -4534,24 +3787,17 @@ function loadConfig() {
   const apNotes = document.getElementById('cfg-ap-notes');
   if(apGoal) apGoal.value = p.goal||'';
   if(apTarget) apTarget.value = p.targetTime||'';
-  // v0.9.3 (P0): "off" representa doesStrength===false explicitamente —
-  // antes uma string vazia era ambígua ("sem preferência" ≠ "não treina").
-  if(apStrength) apStrength.value = (p.doesStrength === false) ? 'off' : (p.strengthPref || 'ABC');
+  if(apStrength) apStrength.value = p.strengthPref||'ABC';
   if(apLong) apLong.value = p.longRunPref||'';
   if(apInjuries) apInjuries.value = p.injuryHistory||'';
   if(apNotes) apNotes.value = p.notes||'';
 }
 
 function saveAthleteProfile() {
-  // v0.9.3 (P0): "off" no dropdown significa doesStrength=false, strengthPref=null.
-  // Qualquer outro valor significa doesStrength=true com aquela divisão específica.
-  const strengthVal = document.getElementById('cfg-ap-strength-pref')?.value || 'ABC';
-  const doesStrength = strengthVal !== 'off';
   state.athleteProfile = {
     goal:          document.getElementById('cfg-ap-goal')?.value||'',
     targetTime:    document.getElementById('cfg-ap-target-time')?.value||'',
-    doesStrength,
-    strengthPref:  doesStrength ? strengthVal : null,
+    strengthPref:  document.getElementById('cfg-ap-strength-pref')?.value||'ABC',
     longRunPref:   parseInt(document.getElementById('cfg-ap-longrun-pref')?.value)||0,
     injuryHistory: document.getElementById('cfg-ap-injuries')?.value||'',
     notes:         document.getElementById('cfg-ap-notes')?.value||'',
@@ -4579,55 +3825,6 @@ function saveConfig() {
 function clearData() {
   state.workouts = []; state.chatHistory = [];
   save(); showToast('Treinos apagados'); renderDashboard(); renderLog();
-}
-
-// v0.9.0: MODO TESTE — reversível, não toca na nuvem
-// Faz backup do estado real num snapshot local separado, zera a tela
-// para simular um usuário novo, e permite restaurar tudo depois.
-const TEST_BACKUP_KEY = 'pacemaker_test_backup';
-
-function enterOnboardingTestMode() {
-  if(!confirm('Vou guardar uma cópia dos seus dados atuais e mostrar a tela de onboarding como se você fosse novo.\n\nNada é apagado de verdade — nem local, nem na nuvem. Se você recarregar a página (F5), volta tudo automaticamente. Continuar?')) return;
-
-  // Backup do estado atual (incluindo onboardingDone real) num snapshot separado
-  const backup = JSON.parse(JSON.stringify(state));
-  localStorage.setItem(TEST_BACKUP_KEY, JSON.stringify(backup));
-
-  // Trava o sync com a nuvem enquanto o modo teste estiver ativo
-  _testModeActive = true;
-
-  // Simula "usuário novo" só na sessão atual — sem tocar localStorage principal nem Firestore
-  state.workouts = [];
-  state.chatHistory = [];
-  state.onboardingDone = false;
-
-  showToast('Modo teste ativado — seus dados reais estão salvos');
-  renderDashboard();
-  renderLog();
-  showOnboarding();
-}
-
-function restoreFromTestBackup() {
-  const raw = localStorage.getItem(TEST_BACKUP_KEY);
-  if(!raw) { showToast('Nenhum backup de teste encontrado'); return; }
-  try {
-    const backup = JSON.parse(raw);
-    state = { ...state, ...backup, user: state.user }; // mantém o user atual (sessão de login ativa)
-    _testModeActive = false; // libera o sync com a nuvem de volta ao normal
-    save(); // persiste a restauração local; sincroniza com a nuvem normalmente
-    localStorage.removeItem(TEST_BACKUP_KEY);
-    showToast('Dados reais restaurados ✓');
-    hideOnboarding();
-    document.getElementById('screen-first-plan')?.classList.add('hidden');
-    goTo('sec-dashboard');
-  } catch(e) {
-    showToast('Erro ao restaurar backup');
-    console.error(e);
-  }
-}
-
-function hasTestBackup() {
-  return !!localStorage.getItem(TEST_BACKUP_KEY);
 }
 
 // ==================== STRAVA OAUTH ====================
@@ -4688,15 +3885,6 @@ function stravaDisconnect() {
   save(); // propagates disconnect to Firestore
   updateStravaBadge();
   showToast('Strava desconectado');
-}
-
-// v0.9.3 (P1, placeholder): ponto de integração para a futura sincronização
-// automática via Strava Connect (OAuth completo, sem Client ID manual).
-// state.stravaConnection já existe e está pronto para ser preenchido quando
-// o fluxo de OAuth completo for implementado (provavelmente v0.9.4+, junto
-// com um backend ou redirect URI fixo da própria Pacemaker).
-function stravaConnectV2Placeholder() {
-  showToast('Strava Connect (sincronização automática) chega em breve ⚡ — use a importação manual por enquanto.');
 }
 
 function showStravaStatus(type, msg) {
@@ -4951,7 +4139,6 @@ function stravaSelectAll() {
 function stravaImportSelected() {
   if(stravaSelectedIds.size===0) { showToast('Selecione ao menos 1 atividade'); return; }
   let count=0;
-  const importedWorkouts = []; // v0.9.3 (P1): rastreados para a auditoria pós-importação
   stravaSelectedIds.forEach(idStr=>{
     const a = stravaActivitiesCache.find(x=>String(x.id)===idStr);
     if(!a) return;
@@ -4976,68 +4163,16 @@ function stravaImportSelected() {
     // Avoid duplicates
     if(!state.workouts.find(x=>x.stravaId===w.stravaId)) {
       state.workouts.unshift(w);
-      importedWorkouts.push(w);
       count++;
     }
   });
   // Sort by date desc
   state.workouts.sort((a,b)=>b.date.localeCompare(a.date));
   save();
+  closeModal('modal-strava');
+  showToast(`✓ ${count} treino(s) importado(s)!`);
   renderDashboard(); renderLog();
   stravaSelectedIds.clear();
-
-  // v0.9.3 (P1): Importação Inteligente — mostra exatamente o que foi recuperado,
-  // em vez de só fechar o modal com um toast genérico. Reduz a sensação de
-  // "perda de histórico" relatada no uso real.
-  showStravaImportSummary(importedWorkouts);
-}
-
-// v0.9.3 (P1): auditoria pós-importação — treinos, km, longões, período coberto.
-function showStravaImportSummary(importedWorkouts) {
-  const actionsRow = document.getElementById('strava-import-actions');
-  const list = document.getElementById('strava-activity-list');
-  const summary = document.getElementById('strava-import-summary');
-  if(actionsRow) actionsRow.style.display = 'none';
-  if(list) list.style.display = 'none';
-  if(!summary) { closeModal('modal-strava'); showToast(`✓ ${importedWorkouts.length} treino(s) importado(s)!`); return; }
-
-  const count = importedWorkouts.length;
-  const totalKm = importedWorkouts.reduce((a,w)=>a+(w.dist||0),0);
-  const longoes = importedWorkouts.filter(w=>w.type==='long' || w.dist>=15).length;
-  let periodoStr = '--';
-  if(count > 0) {
-    const dates = importedWorkouts.map(w=>w.date).sort();
-    const oldest = dates[0], newest = dates[dates.length-1];
-    periodoStr = oldest === newest ? formatDate(oldest) : `${formatDate(oldest)} – ${formatDate(newest)}`;
-  }
-
-  document.getElementById('sis-count').textContent    = `${count} treino${count===1?'':'s'}`;
-  document.getElementById('sis-km').textContent        = `${totalKm.toFixed(1)} km`;
-  document.getElementById('sis-longoes').textContent   = longoes===1 ? '1 longão' : `${longoes} longões`;
-  document.getElementById('sis-periodo').textContent   = periodoStr;
-  summary.style.display = 'block';
-}
-
-// v0.9.3 (P1): fecha o modal e restaura o estado padrão (lista de atividades)
-// para a próxima vez que o usuário abrir a importação.
-function closeStravaImportSummary() {
-  closeModal('modal-strava');
-  const actionsRow = document.getElementById('strava-import-actions');
-  const list = document.getElementById('strava-activity-list');
-  const summary = document.getElementById('strava-import-summary');
-  if(actionsRow) actionsRow.style.display = 'flex';
-  if(list) list.style.display = 'block';
-  if(summary) summary.style.display = 'none';
-}
-
-// ==================== v0.9.3 (P2) — GOOGLE CALENDAR EXPORT (FOUNDATION) ====================
-// Objetivo: reduzir a fricção do download manual de .ics. Esta é só a base —
-// estrutura de estado, botão e fluxo preparado. A integração real com a
-// Google Calendar API (OAuth + criação de eventos) fica para uma versão futura.
-// state.calendarExport já existe e está pronto para ser preenchido quando o
-// fluxo completo for implementado.
-function exportToGoogleCalendarPlaceholder() {
-  showToast('Exportar para o Google Calendar chega em breve 🗓️ — use o .ics por enquanto.');
 }
 
 // ==================== ICS EXPORT ====================
@@ -5254,14 +4389,6 @@ async function firebaseLogout() {
   if(!window._fbAuth) return;
   if(!confirm('Sair da conta? Seus dados locais são mantidos.')) return;
   try {
-    // v0.9.2.2 (P0): garante que qualquer alteração local pendente (ex: semana
-    // recém-planejada) seja enviada à nuvem ANTES do logout. Sem isso, save()
-    // dispara o upload em background sem esperar — se o logout acontecer antes
-    // do upload terminar, o próximo login baixava uma versão antiga da nuvem
-    // e o planejamento "desaparecia".
-    setSyncStatus('syncing');
-    await uploadToCloud();
-
     const { signOut } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
     await signOut(window._fbAuth);
     state.user = null;
@@ -5309,18 +4436,13 @@ function buildCloudPayload() {
   const rawKey = getGeminiKey();
   return {
     schemaVersion: SCHEMA_VERSION,
-    // v0.9.2.2 (P0): usa o timestamp da última mudança LOCAL (carimbado em save()),
-    // não um timestamp novo gerado agora — assim o valor enviado reflete a real
-    // idade dos dados, permitindo comparação confiável em downloadFromCloud().
-    updatedAt: state.updatedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     config: state.config,
     workouts: state.workouts,
     athleteProfile: state.athleteProfile,
     stravaConfig: state.stravaConfig,  // clientId + connected flag + athlete meta (no tokens)
     geminiKeyEncrypted: rawKey ? geminiKeyToCloud(rawKey) : null,
-    chatHistory: state.chatHistory, // Sync chat history across devices
-    onboardingDone: state.onboardingDone || false, // v0.9.0
-    aiStrategy: state.aiStrategy || null // v0.9.2
+    chatHistory: state.chatHistory // Sync chat history across devices
   };
 }
 
@@ -5348,33 +4470,10 @@ async function downloadFromCloud() {
     const snap = await window._fbGetDoc(ref);
     if(snap.exists()) {
       const data = snap.data();
-
-      // v0.9.2.2 (P0) — CAUSA RAIZ do "planejamento desaparece no logout/login":
-      // downloadFromCloud() sobrescrevia state.workouts/config incondicionalmente
-      // com o que estivesse no Firestore, mesmo que o upload do plano recém-criado
-      // ainda não tivesse terminado (save() dispara uploadToCloud() sem esperar).
-      // Agora comparamos updatedAt: só aplicamos os dados da nuvem se eles forem
-      // IGUAIS ou MAIS NOVOS que os dados locais. Se o local for mais novo (upload
-      // pendente/perdido), mantemos o local e reenviamos para a nuvem em vez de
-      // jogar fora o trabalho do usuário.
-      const cloudUpdatedAt = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
-      const localUpdatedAt = state.updatedAt ? new Date(state.updatedAt).getTime() : 0;
-      const cloudIsNewerOrEqual = cloudUpdatedAt >= localUpdatedAt;
-
-      if(!cloudIsNewerOrEqual) {
-        console.warn('v0.9.2.2: dados locais são mais recentes que a nuvem — mantendo local e re-sincronizando.', {localUpdatedAt: state.updatedAt, cloudUpdatedAt: data.updatedAt});
-        setSyncStatus('synced');
-        uploadToCloud().catch(()=>{}); // corrige o doc na nuvem com a versão local correta
-        return;
-      }
-
       if(data.config)         state.config         = { ...state.config,         ...data.config         };
       if(data.workouts)       state.workouts       = data.workouts;
       if(data.athleteProfile) state.athleteProfile = { ...state.athleteProfile, ...data.athleteProfile };
       if(data.chatHistory)    state.chatHistory    = data.chatHistory;
-      if(typeof data.onboardingDone === 'boolean') state.onboardingDone = data.onboardingDone; // v0.9.0
-      if(data.aiStrategy)     state.aiStrategy     = data.aiStrategy; // v0.9.2
-      if(data.updatedAt)      state.updatedAt      = data.updatedAt;  // v0.9.2.2: sincroniza o marcador local com a nuvem aplicada
       // Restore Strava config so Client ID appears on new devices
       if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
       // Also restore Client ID to UID-scoped localStorage so Strava functions find it
@@ -5390,7 +4489,7 @@ async function downloadFromCloud() {
           if(typeof loadGeminiKeyField === 'function') loadGeminiKeyField();
         }
       }
-      saveLocalOnly(); // v0.9.2.2: persiste localmente SEM re-disparar upload (já viemos do download)
+      save(); // persist cloud data to UID-scoped localStorage
       renderDashboard(); renderLog(); renderPlanner(); renderChatMsgs();
       // Repopulate Settings fields (Strava CID, athlete profile, config)
       if(typeof loadConfig === 'function') loadConfig();
@@ -5458,25 +4557,12 @@ function checkMigration() {
 
 // Patch save() to also push to cloud when logged in
 const _originalSave = save;
-let _testModeActive = false; // v0.9.0: quando true, save() não sincroniza com a nuvem
-
 function save() {
-  // v0.9.2.2 (P0): toda alteração local (planejar semana, registrar treino, etc.)
-  // atualiza este timestamp. É ele que protege os dados locais de serem
-  // sobrescritos por uma versão antiga vinda da nuvem em downloadFromCloud().
-  state.updatedAt = new Date().toISOString();
   localStorage.setItem(getDbKey(), JSON.stringify(state));
-  // Background cloud sync — non-blocking, only if logged in, online, and NOT in test mode
-  if(state.user && navigator.onLine && !_testModeActive) {
+  // Background cloud sync — non-blocking, only if logged in and online
+  if(state.user && navigator.onLine) {
     uploadToCloud().catch(() => {});
   }
-}
-
-// v0.9.2.2 (P0): persiste localmente sem disparar upload — usado depois de um
-// downloadFromCloud() bem-sucedido, já que os dados acabaram de vir da nuvem
-// (re-subir seria um round-trip inútil e poderia, em teoria, recriar a corrida).
-function saveLocalOnly() {
-  localStorage.setItem(getDbKey(), JSON.stringify(state));
 }
 
 // Phase E — Online/offline events
@@ -5799,14 +4885,14 @@ function renderWeeklyReports() {
   el.innerHTML = `
     <div style="padding:0 0 16px;margin-bottom:16px;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Análise das últimas 8 semanas de treino</div>
-      <span class="badge badge-accent">v0.9.0</span>
+      <span class="badge badge-accent">v0.8.5</span>
     </div>
     ${trendHtml}
     ${analysisHtml}
     <div class="label" style="margin-bottom:12px;letter-spacing:.1em">DETALHAMENTO SEMANAL</div>
     ${cardsHtml}
     <div style="text-align:center;font-family:var(--mono);font-size:9px;color:var(--text3);padding:16px 0">
-      Dados baseados nos treinos registrados · v0.9.0 Context Engine
+      Dados baseados nos treinos registrados · v0.8.5 Context Engine
     </div>
   `;
 }
@@ -5996,52 +5082,10 @@ function initDesktopUI() {
 function renderDashboard() {
   renderDashboardBase();
   updateSidebarCountdown();
-  renderCycleCompletedCard(); // v0.9.3 (P0): Ciclo de Prova
   if(window.matchMedia('(min-width:900px)').matches) {
     applyDashboardDesktopGrid();
     updateRightPanel();
   }
-}
-
-// ==================== v0.9.3 (P0) — CICLO DE PROVA ====================
-// Detecta quando a data da prova passou e marca o ciclo como COMPLETED.
-// Ainda NÃO gera plano novo automaticamente — apenas detecta o fim do ciclo
-// e oferece os próximos passos (registrar resultado / criar novo objetivo).
-function checkStrategyCycleCompletion() {
-  const sc = state.strategyCycle;
-  if(!sc || sc.status !== 'ACTIVE') return false;
-  if(!sc.raceDate) return false; // metas de saúde/condicionamento não têm prova — nunca "completam" por data
-  if(today() > sc.raceDate) {
-    sc.status = 'COMPLETED';
-    save();
-    return true;
-  }
-  return false;
-}
-
-function renderCycleCompletedCard() {
-  checkStrategyCycleCompletion();
-  const card = document.getElementById('db-cycle-completed-card');
-  if(!card) return;
-  const isCompleted = state.strategyCycle?.status === 'COMPLETED';
-  card.style.display = isCompleted ? '' : 'none';
-  if(isCompleted) {
-    const sub = document.getElementById('db-cycle-completed-sub');
-    const raceName = state.config.raceName || 'sua prova';
-    const raceDate = state.strategyCycle.raceDate ? formatDate(state.strategyCycle.raceDate) : '';
-    if(sub) sub.textContent = raceDate
-      ? `${raceName} foi em ${raceDate}. Hora de fechar esse capítulo e definir o próximo passo.`
-      : `${raceName} ficou no passado. Hora de fechar esse capítulo e definir o próximo passo.`;
-  }
-}
-
-// v0.9.3 (P1, stub): ainda não gera plano novo — apenas detecção de fim de
-// ciclo, conforme escopo desta versão. Os fluxos completos ficam para v0.9.4.
-function openCycleResultModal() {
-  showToast('Registro de resultado chega em breve 🏅');
-}
-function startNewCycleGoal() {
-  showToast('Criação de novo objetivo chega em breve 🎯');
 }
 
 function applyDashboardDesktopGrid() {
@@ -6078,1049 +5122,6 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchstart',e=>{drawerS
 drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
   if(e.changedTouches[0].clientY - drawerSwipeY > 60) closeDayDrawer();
 },{passive:true});
-</script>
-<!-- ══════════════════════════════════════════════════════════
-     v0.9.0 — ONBOARDING + FIRST PLAN EXPERIENCE
-     ══════════════════════════════════════════════════════════ -->
-<style>
-/* ── Onboarding overlay ─────────────────────────────────── */
-#screen-onboarding, #screen-first-plan {
-  position:fixed;inset:0;z-index:9000;
-  background:var(--bg);
-  display:flex;flex-direction:column;
-  overflow:hidden;
-}
-#screen-onboarding.hidden, #screen-first-plan.hidden { display:none!important; }
-
-/* Progress bar */
-.ob-progress-wrap {
-  height:3px;background:var(--surface2);flex-shrink:0;
-}
-.ob-progress-bar {
-  height:100%;background:var(--accent);border-radius:2px;
-  transition:width .35s ease;
-}
-
-/* Step container */
-.ob-steps { flex:1;overflow:hidden;position:relative; }
-.ob-step {
-  position:absolute;inset:0;
-  display:flex;flex-direction:column;justify-content:center;
-  padding:32px 28px;
-  opacity:0;pointer-events:none;transform:translateX(40px);
-  transition:opacity .28s ease, transform .28s ease;
-  overflow-y:auto;
-}
-.ob-step.active {
-  opacity:1;pointer-events:auto;transform:translateX(0);
-}
-.ob-step.exit {
-  opacity:0;transform:translateX(-40px);
-}
-
-/* v0.9.0 refinamento: tela final centralizada, sem scroll, mais emocional */
-.ob-step-centered {
-  align-items:center;text-align:center;justify-content:center;
-  overflow-y:hidden!important;
-}
-.ob-icon-hero {
-  font-size:48px;margin-bottom:18px;
-  animation:fp-pop .45s cubic-bezier(.34,1.56,.64,1) both;
-}
-.ob-summary-cards {
-  display:flex;flex-direction:column;gap:8px;
-  width:100%;margin-top:20px;
-}
-.ob-summary-row {
-  display:flex;justify-content:space-between;align-items:center;
-  padding:12px 16px;background:var(--surface2);
-  border-radius:var(--r-sm);border:1px solid var(--border);
-}
-.ob-summary-key {
-  font-family:var(--mono);font-size:10px;color:var(--text3);
-  text-transform:uppercase;letter-spacing:.06em;
-}
-.ob-summary-val {
-  font-family:var(--display);font-size:14px;font-weight:700;color:var(--text);
-}
-.ob-summary-val.accent { color:var(--accent); }
-
-/* Step content */
-.ob-eyebrow {
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--accent);margin-bottom:10px;
-}
-.ob-title {
-  font-family:var(--display);font-size:26px;font-weight:800;
-  line-height:1.2;margin-bottom:8px;
-}
-.ob-sub {
-  font-family:var(--mono);font-size:12px;color:var(--text3);
-  margin-bottom:28px;line-height:1.6;
-}
-.ob-field { margin-bottom:16px; }
-.ob-label {
-  font-family:var(--mono);font-size:10px;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--text3);margin-bottom:6px;
-}
-.ob-input {
-  width:100%;padding:13px 14px;
-  background:var(--surface2);border:1px solid var(--border2);
-  border-radius:var(--r-sm);color:var(--text);
-  font-family:var(--mono);font-size:15px;
-  transition:border-color .15s;
-}
-.ob-input:focus { outline:none;border-color:var(--accent); }
-.ob-input::placeholder { color:var(--text3); }
-
-/* Option chips */
-.ob-chips { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px; }
-.ob-chip {
-  padding:10px 16px;border-radius:20px;
-  border:1px solid var(--border2);background:var(--surface2);
-  font-family:var(--mono);font-size:12px;color:var(--text2);
-  cursor:pointer;transition:all .15s;
-}
-.ob-chip:hover { border-color:var(--accent);color:var(--accent); }
-.ob-chip.sel {
-  border-color:var(--accent);background:var(--accent-dim);
-  color:var(--accent);font-weight:700;
-}
-
-/* Days chips (numbers) */
-.ob-day-chips { display:flex;gap:6px;flex-wrap:wrap; }
-.ob-day-chip {
-  width:44px;height:44px;border-radius:50%;
-  border:1px solid var(--border2);background:var(--surface2);
-  font-family:var(--mono);font-size:13px;color:var(--text2);
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:all .15s;
-}
-.ob-day-chip.sel {
-  border-color:var(--accent);background:var(--accent-dim);color:var(--accent);font-weight:700;
-}
-
-/* Footer */
-.ob-footer {
-  padding:20px 28px;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));
-  flex-shrink:0;display:flex;flex-direction:column;gap:10px;
-}
-.ob-btn-primary {
-  width:100%;padding:16px;border-radius:var(--r);
-  background:var(--accent);color:#0a0a0f;
-  font-family:var(--display);font-size:14px;font-weight:800;
-  letter-spacing:.06em;border:none;cursor:pointer;
-  transition:opacity .15s;
-}
-.ob-btn-primary:hover { opacity:.88; }
-.ob-btn-primary:disabled { opacity:.4;cursor:not-allowed; }
-.ob-btn-back {
-  background:none;border:none;
-  font-family:var(--mono);font-size:12px;color:var(--text3);
-  cursor:pointer;padding:6px;
-}
-.ob-btn-back:hover { color:var(--text2); }
-.ob-step-counter {
-  font-family:var(--mono);font-size:10px;color:var(--text3);
-  text-align:center;margin-top:4px;
-}
-
-/* ── First Plan screen ────────────────────────────────────── */
-#screen-first-plan {
-  align-items:center;justify-content:center;
-  padding:32px 28px;text-align:center;
-  background:radial-gradient(ellipse at 50% 0%, rgba(232,245,90,.08) 0%, var(--bg) 70%);
-}
-.fp-icon {
-  font-size:56px;margin-bottom:24px;
-  animation:fp-pop .5s cubic-bezier(.34,1.56,.64,1) both;
-}
-@keyframes fp-pop {
-  from{transform:scale(0);opacity:0}
-  to{transform:scale(1);opacity:1}
-}
-.fp-title {
-  font-family:var(--display);font-size:24px;font-weight:800;
-  margin-bottom:10px;
-}
-.fp-sub {
-  font-family:var(--mono);font-size:12px;color:var(--text3);
-  line-height:1.7;margin-bottom:32px;
-}
-.fp-plan-preview {
-  width:100%;max-width:420px;
-  background:var(--surface);border:1px solid var(--border2);
-  border-radius:var(--r);padding:20px;margin-bottom:28px;text-align:left;
-}
-.fp-plan-row {
-  display:flex;justify-content:space-between;align-items:center;
-  padding:8px 0;border-bottom:.5px solid var(--border);
-  font-family:var(--mono);font-size:12px;
-}
-.fp-plan-row:last-child { border-bottom:none; }
-.fp-plan-key { color:var(--text3); }
-.fp-plan-val { color:var(--accent);font-weight:700; }
-
-/* ── Desktop onboarding ─────────────────────────────────── */
-@media(min-width:900px){
-  .ob-step { max-width:480px;margin:0 auto;padding:40px 0; }
-  .ob-footer { max-width:480px;margin:0 auto;padding-left:0;padding-right:0; }
-  #screen-first-plan { gap:0; }
-}
-</style>
-
-<!-- ── ONBOARDING SCREEN ──────────────────────────────────── -->
-<div id="screen-onboarding" class="hidden">
-  <div class="ob-progress-wrap">
-    <div class="ob-progress-bar" id="ob-progress" style="width:0%"></div>
-  </div>
-
-  <div class="ob-steps">
-    <!-- STEP 0: Welcome -->
-    <div class="ob-step active" data-step="0">
-      <div class="ob-eyebrow">Pacemaker v0.9</div>
-      <div class="ob-title">Pronto para<br>correr mais<br>inteligente?</div>
-      <div class="ob-sub">Em 2 minutos montamos seu plano personalizado. Sem complicação.</div>
-      <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--r-sm)">
-          <span style="font-size:20px">🎯</span>
-          <div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:2px">Plano personalizado</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Baseado no seu perfil e objetivo</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--r-sm)">
-          <span style="font-size:20px">🤖</span>
-          <div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:2px">Coach AI incluído</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Orientação adaptativa toda semana</div>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--r-sm)">
-          <span style="font-size:20px">📊</span>
-          <div>
-            <div style="font-size:12px;font-weight:700;margin-bottom:2px">Sincronizado em todos os dispositivos</div>
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Via Google Account — sempre salvo</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- STEP 1: Profile -->
-    <div class="ob-step" data-step="1">
-      <div class="ob-eyebrow">Passo 1 de 5</div>
-      <div class="ob-title">Vamos te conhecer<br>um pouco melhor</div>
-      <div class="ob-sub">Isso ajuda a montar um plano seguro pro seu corpo.</div>
-      <div class="ob-field">
-        <div class="ob-label">Como quer ser chamado?</div>
-        <input class="ob-input" id="ob-name" type="text" placeholder="Seu nome" autocomplete="given-name"/>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="ob-field">
-          <div class="ob-label">Peso (kg)</div>
-          <input class="ob-input" id="ob-weight" type="number" placeholder="70" min="40" max="200"/>
-        </div>
-        <div class="ob-field">
-          <div class="ob-label">Altura (cm)</div>
-          <input class="ob-input" id="ob-height" type="number" placeholder="175" min="140" max="220"/>
-        </div>
-      </div>
-    </div>
-
-    <!-- STEP 2: Experience -->
-    <div class="ob-step" data-step="2">
-      <div class="ob-eyebrow">Passo 2 de 5</div>
-      <div class="ob-title">Qual é sua experiência?</div>
-      <div class="ob-sub">Seja honesto — isso define seu volume inicial.</div>
-      <div class="ob-field">
-        <div class="ob-label">Nível atual</div>
-        <div class="ob-chips" id="ob-level-chips">
-          <div class="ob-chip" data-val="beginner" onclick="selectChip('ob-level-chips',this)">🌱 Iniciante<br><span style="font-size:10px;color:var(--text3)">Menos de 6 meses</span></div>
-          <div class="ob-chip" data-val="intermediate" onclick="selectChip('ob-level-chips',this)">🏃 Intermediário<br><span style="font-size:10px;color:var(--text3)">6 meses – 2 anos</span></div>
-          <div class="ob-chip" data-val="advanced" onclick="selectChip('ob-level-chips',this)">⚡ Avançado<br><span style="font-size:10px;color:var(--text3)">Mais de 2 anos</span></div>
-        </div>
-      </div>
-      <div class="ob-field" id="ob-besttime-field" style="display:none">
-        <div class="ob-label">Melhor tempo em prova (opcional)</div>
-        <input class="ob-input" id="ob-besttime" type="text" placeholder="Ex: 2h38 (meia) ou 5h10 (maratona)"/>
-      </div>
-    </div>
-
-    <!-- STEP 3: Goal -->
-    <div class="ob-step" data-step="3">
-      <div class="ob-eyebrow">Passo 3 de 5</div>
-      <div class="ob-title">O que você quer<br>conquistar?</div>
-      <div class="ob-sub">Isso define a estrutura do seu treino.</div>
-      <div class="ob-field">
-        <div class="ob-chips" id="ob-race-chips">
-          <div class="ob-chip" data-val="health" onclick="selectRaceChip(this)">Saúde e condicionamento</div>
-          <div class="ob-chip" data-val="5k" onclick="selectRaceChip(this)">Correr 5 km</div>
-          <div class="ob-chip" data-val="10k" onclick="selectRaceChip(this)">Correr 10 km</div>
-          <div class="ob-chip" data-val="half" onclick="selectRaceChip(this)">Meia maratona</div>
-          <div class="ob-chip sel" data-val="marathon" onclick="selectRaceChip(this)">Maratona</div>
-        </div>
-      </div>
-      <div class="ob-field" id="ob-targettime-field">
-        <div class="ob-label">Meta de tempo (opcional)</div>
-        <input class="ob-input" id="ob-targettime" type="text" placeholder="Ex: Sub 4h, Sub 2h, 5:30/km"/>
-      </div>
-      <div class="ob-field" id="ob-racedate-field">
-        <div class="ob-label">Data da prova (opcional)</div>
-        <input class="ob-input" id="ob-racedate" type="date"/>
-      </div>
-    </div>
-
-    <!-- STEP 4: Availability -->
-    <div class="ob-step" data-step="4">
-      <div class="ob-eyebrow">Passo 4 de 5</div>
-      <div class="ob-title">Quanto você pode treinar?</div>
-      <div class="ob-sub">Seja realista — consistência bate intensidade.</div>
-      <div class="ob-field">
-        <div class="ob-label">Dias de corrida por semana</div>
-        <div class="ob-day-chips" id="ob-days-chips">
-          <div class="ob-day-chip" data-val="2" onclick="selectDayChip(this)">2</div>
-          <div class="ob-day-chip" data-val="3" onclick="selectDayChip(this)">3</div>
-          <div class="ob-day-chip sel" data-val="4" onclick="selectDayChip(this)">4</div>
-          <div class="ob-day-chip" data-val="5" onclick="selectDayChip(this)">5</div>
-          <div class="ob-day-chip" data-val="6" onclick="selectDayChip(this)">6</div>
-        </div>
-      </div>
-      <div class="ob-field" style="margin-top:20px">
-        <div class="ob-label">Como é a sua rotina de trabalho?</div>
-        <div class="ob-chips" id="ob-scale-chips">
-          <div class="ob-chip sel" data-val="5x2" onclick="selectScaleChip(this)">5x2 (Segunda a Sexta)</div>
-          <div class="ob-chip" data-val="6x1" onclick="selectScaleChip(this)">6x1</div>
-          <div class="ob-chip" data-val="2x2" onclick="selectScaleChip(this)">2x2</div>
-          <div class="ob-chip" data-val="12x36" onclick="selectScaleChip(this)">12x36</div>
-          <div class="ob-chip" data-val="custom" onclick="selectScaleChip(this)">Personalizada</div>
-        </div>
-      </div>
-
-      <!-- Rotação — só para 2x2 e 12x36 -->
-      <div class="ob-field" id="ob-rotation-field" style="display:none;margin-top:14px">
-        <div class="ob-label">Quando começa esse ciclo?</div>
-        <input class="ob-input" id="ob-rotation-start" type="date"/>
-      </div>
-
-      <!-- Dias personalizados — só para Personalizada -->
-      <div class="ob-field" id="ob-custom-days-field" style="display:none;margin-top:14px">
-        <div class="ob-label">Em quais dias você trabalha?</div>
-        <div class="ob-chips" id="ob-custom-days-chips">
-          <div class="ob-chip" data-val="1" onclick="toggleCustomDay(this)">Seg</div>
-          <div class="ob-chip" data-val="2" onclick="toggleCustomDay(this)">Ter</div>
-          <div class="ob-chip" data-val="3" onclick="toggleCustomDay(this)">Qua</div>
-          <div class="ob-chip" data-val="4" onclick="toggleCustomDay(this)">Qui</div>
-          <div class="ob-chip" data-val="5" onclick="toggleCustomDay(this)">Sex</div>
-          <div class="ob-chip" data-val="6" onclick="toggleCustomDay(this)">Sáb</div>
-          <div class="ob-chip" data-val="0" onclick="toggleCustomDay(this)">Dom</div>
-        </div>
-      </div>
-
-      <!-- v0.9.3 (P0): Musculação opcional — antes o onboarding NUNCA perguntava isso,
-           e o Planner assumia rotação ABC mesmo para quem só corre. Agora é explícito. -->
-      <div class="ob-field" style="margin-top:20px">
-        <div class="ob-label">Treina musculação?</div>
-        <div class="ob-chips" id="ob-strength-yn-chips">
-          <div class="ob-chip" data-val="no" onclick="selectStrengthYn(this)">Não faço musculação</div>
-          <div class="ob-chip sel" data-val="yes" onclick="selectStrengthYn(this)">Quero incluir musculação</div>
-        </div>
-      </div>
-      <div class="ob-field" id="ob-strength-split-field" style="margin-top:14px">
-        <div class="ob-label">Qual divisão você prefere?</div>
-        <div class="ob-chips" id="ob-strength-split-chips">
-          <div class="ob-chip sel" data-val="ABC" onclick="selectChip('ob-strength-split-chips', this)">ABC</div>
-          <div class="ob-chip" data-val="ABCD" onclick="selectChip('ob-strength-split-chips', this)">ABCD</div>
-          <div class="ob-chip" data-val="AB" onclick="selectChip('ob-strength-split-chips', this)">Superior/Inferior</div>
-          <div class="ob-chip" data-val="custom" onclick="selectChip('ob-strength-split-chips', this)">Personalizado</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- STEP 5: Summary -->
-    <div class="ob-step ob-step-centered" data-step="5">
-      <div class="ob-icon-hero">🎯</div>
-      <div class="ob-title" style="text-align:center">Seu Coach<br>está pronto.</div>
-      <div class="ob-sub" style="text-align:center">Confira o resumo antes de gerar seu plano.</div>
-      <div id="ob-summary" class="ob-summary-cards"></div>
-    </div>
-  </div>
-
-  <div class="ob-footer">
-    <button class="ob-btn-primary" id="ob-btn-next" onclick="obNext()">Começar →</button>
-    <button class="ob-btn-back" id="ob-btn-back" style="display:none" onclick="obBack()">← Voltar</button>
-    <div class="ob-step-counter" id="ob-step-counter"></div>
-  </div>
-</div>
-
-<!-- ── FIRST PLAN SCREEN ──────────────────────────────────── -->
-<div id="screen-first-plan" class="hidden">
-  <div class="fp-icon">🏃</div>
-  <div class="fp-title">Seu plano chegou.</div>
-  <div class="fp-sub" id="fp-sub">Seu Coach preparou a primeira semana.<br>Hora de começar.</div>
-  <div class="fp-plan-preview" id="fp-plan-preview"></div>
-  <button class="ob-btn-primary" style="max-width:420px;width:100%" onclick="enterDashboard()">
-    Ver meu Dashboard →
-  </button>
-</div>
-
-<script>
-// ══════════════════════════════════════════════════════════
-// v0.9.0 — ONBOARDING ENGINE
-// ══════════════════════════════════════════════════════════
-
-const OB_TOTAL_STEPS = 6; // steps 0-5
-let _obStep = 0;
-const _obData = {
-  name:'', weight:0, height:0,
-  level:'intermediate', bestTime:'',
-  raceType:'marathon', targetTime:'', raceDate:'',
-  daysPerWeek:4, scale:'5x2', scaleStart:'', customWorkDays:[],
-  doesStrength:true, strengthSplit:'ABC' // v0.9.3 (P0): musculação agora é explícita, não assumida
-};
-
-// ── Entry point ───────────────────────────────────────────
-function checkOnboarding() {
-  // v0.9.3.1 (P0): antes só mostrava onboarding se houvesse login (`if(!state.user) return;`).
-  // Isso impedia qualquer usuário anônimo/local-only de ver o onboarding — caía
-  // direto no Dashboard vazio. O Coach IA (TESTER_MODE/key local) não depende de
-  // login, então o onboarding também não deveria depender.
-  if(state.onboardingDone) return;
-  // Pre-fill name from Google account, se houver
-  if(state.user?.displayName && !_obData.name) {
-    _obData.name = state.user.displayName.split(' ')[0];
-    const nameInput = document.getElementById('ob-name');
-    if(nameInput) nameInput.value = _obData.name;
-  }
-  showOnboarding();
-}
-
-function showOnboarding() {
-  document.getElementById('screen-onboarding').classList.remove('hidden');
-  _obStep = 0;
-  renderObStep(0);
-}
-
-function hideOnboarding() {
-  document.getElementById('screen-onboarding').classList.add('hidden');
-}
-
-// ── Step navigation ───────────────────────────────────────
-function renderObStep(step) {
-  // Progress bar
-  const pct = step === 0 ? 5 : Math.round((step / (OB_TOTAL_STEPS - 1)) * 100);
-  document.getElementById('ob-progress').style.width = pct + '%';
-
-  // Show/hide steps
-  document.querySelectorAll('.ob-step').forEach(el => {
-    const s = parseInt(el.dataset.step);
-    el.classList.remove('active','exit');
-    if(s === step) el.classList.add('active');
-    else if(s < step) el.classList.add('exit');
-  });
-
-  // Next button label
-  const nextBtn = document.getElementById('ob-btn-next');
-  const backBtn = document.getElementById('ob-btn-back');
-  const counter = document.getElementById('ob-step-counter');
-
-  if(step === 0) {
-    nextBtn.textContent = 'Começar →';
-    backBtn.style.display = 'none';
-    counter.textContent = '';
-  } else if(step === OB_TOTAL_STEPS - 1) {
-    nextBtn.textContent = '🚀 Gerar meu plano';
-    backBtn.style.display = 'block';
-    counter.textContent = ''; // tela final não mostra contador — não é mais um formulário
-    renderObSummary();
-  } else {
-    nextBtn.textContent = 'Continuar →';
-    backBtn.style.display = 'block';
-    counter.textContent = `${step} de ${OB_TOTAL_STEPS - 1}`;
-  }
-
-  // Show besttime field when not beginner
-  if(step === 2) {
-    const btField = document.getElementById('ob-besttime-field');
-    if(btField) btField.style.display = _obData.level !== 'beginner' ? 'block' : 'none';
-  }
-}
-
-function obNext() {
-  if(!validateObStep(_obStep)) return;
-  collectObStep(_obStep);
-
-  if(_obStep === OB_TOTAL_STEPS - 1) {
-    // Final step — save and generate
-    finishOnboarding();
-    return;
-  }
-  _obStep++;
-  renderObStep(_obStep);
-}
-
-function obBack() {
-  if(_obStep <= 0) return;
-  _obStep--;
-  renderObStep(_obStep);
-}
-
-function validateObStep(step) {
-  if(step === 1) {
-    const name = document.getElementById('ob-name').value.trim();
-    if(!name) { shakeEl('ob-name'); return false; }
-  }
-  return true;
-}
-
-function shakeEl(id) {
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.style.borderColor = 'var(--red)';
-  el.style.animation = 'none';
-  setTimeout(()=>{ el.style.borderColor=''; },1200);
-}
-
-function collectObStep(step) {
-  if(step === 1) {
-    _obData.name   = document.getElementById('ob-name').value.trim() || _obData.name;
-    _obData.weight = parseFloat(document.getElementById('ob-weight').value) || 70;
-    _obData.height = parseFloat(document.getElementById('ob-height').value) || 175;
-  }
-  if(step === 2) {
-    const lc = document.querySelector('#ob-level-chips .ob-chip.sel');
-    if(lc) _obData.level = lc.dataset.val;
-    _obData.bestTime = document.getElementById('ob-besttime').value.trim();
-  }
-  if(step === 3) {
-    const rc = document.querySelector('#ob-race-chips .ob-chip.sel');
-    if(rc) _obData.raceType = rc.dataset.val;
-    _obData.targetTime = document.getElementById('ob-targettime').value.trim();
-    _obData.raceDate   = document.getElementById('ob-racedate').value;
-  }
-  if(step === 4) {
-    const dc = document.querySelector('#ob-days-chips .ob-day-chip.sel');
-    if(dc) _obData.daysPerWeek = parseInt(dc.dataset.val);
-    const sc = document.querySelector('#ob-scale-chips .ob-chip.sel');
-    if(sc) _obData.scale = sc.dataset.val;
-    // Rotação (2x2 / 12x36)
-    const rotationInput = document.getElementById('ob-rotation-start');
-    _obData.scaleStart = rotationInput ? rotationInput.value : '';
-    // Dias personalizados
-    const customDays = Array.from(document.querySelectorAll('#ob-custom-days-chips .ob-chip.sel')).map(c=>c.dataset.val);
-    _obData.customWorkDays = customDays;
-    // v0.9.3 (P0): Musculação opcional — explícito, não assumido
-    const ynChip = document.querySelector('#ob-strength-yn-chips .ob-chip.sel');
-    _obData.doesStrength = ynChip ? ynChip.dataset.val === 'yes' : true;
-    if(_obData.doesStrength) {
-      const splitChip = document.querySelector('#ob-strength-split-chips .ob-chip.sel');
-      _obData.strengthSplit = splitChip ? splitChip.dataset.val : 'ABC';
-    } else {
-      _obData.strengthSplit = null;
-    }
-  }
-}
-
-// ── Chip helpers ──────────────────────────────────────────
-function selectChip(groupId, el) {
-  document.querySelectorAll(`#${groupId} .ob-chip`).forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel');
-  // Show besttime when level selected and not beginner
-  if(groupId === 'ob-level-chips') {
-    _obData.level = el.dataset.val;
-    const btField = document.getElementById('ob-besttime-field');
-    if(btField) btField.style.display = el.dataset.val !== 'beginner' ? 'block' : 'none';
-  }
-}
-
-function selectDayChip(el) {
-  document.querySelectorAll('#ob-days-chips .ob-day-chip').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel');
-}
-
-// v0.9.0 refinamento: escala de trabalho com campos condicionais
-// v0.9.0 refinamento: oculta campos irrelevantes quando objetivo é saúde/condicionamento
-function selectRaceChip(el) {
-  document.querySelectorAll('#ob-race-chips .ob-chip').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel');
-  _obData.raceType = el.dataset.val;
-
-  const isHealth = el.dataset.val === 'health';
-  const timeField = document.getElementById('ob-targettime-field');
-  const dateField = document.getElementById('ob-racedate-field');
-  if(timeField) timeField.style.display = isHealth ? 'none' : 'block';
-  if(dateField) dateField.style.display = isHealth ? 'none' : 'block';
-}
-
-function selectScaleChip(el) {
-  document.querySelectorAll('#ob-scale-chips .ob-chip').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel');
-  _obData.scale = el.dataset.val;
-
-  const rotationField = document.getElementById('ob-rotation-field');
-  const customField = document.getElementById('ob-custom-days-field');
-
-  // Apenas 2x2 e 12x36 pedem data de início da rotação
-  const needsRotation = ['2x2','12x36'].includes(el.dataset.val);
-  if(rotationField) rotationField.style.display = needsRotation ? 'block' : 'none';
-
-  // Apenas Personalizada pede seleção manual de dias
-  const isCustom = el.dataset.val === 'custom';
-  if(customField) customField.style.display = isCustom ? 'block' : 'none';
-}
-
-function toggleCustomDay(el) {
-  el.classList.toggle('sel');
-}
-
-// v0.9.3 (P0): Musculação opcional — alterna a visibilidade do campo de divisão
-function selectStrengthYn(el) {
-  document.querySelectorAll('#ob-strength-yn-chips .ob-chip').forEach(c=>c.classList.remove('sel'));
-  el.classList.add('sel');
-  _obData.doesStrength = el.dataset.val === 'yes';
-  const splitField = document.getElementById('ob-strength-split-field');
-  if(splitField) splitField.style.display = _obData.doesStrength ? 'block' : 'none';
-}
-
-// ── Summary ───────────────────────────────────────────────
-// v0.9.2.2 (P1): cache da MESMA estratégia de IA usada no preview e no plano
-// final. Antes, o preview ("Seu Coach está pronto") usava só
-// calcWeekGoalFromProfile() (regra fixa), enquanto finishOnboarding() chamava
-// a IA de verdade — dois cálculos diferentes que podiam divergir bastante
-// (ex: 90km no preview vs 72km no plano real, para a mesma pessoa).
-let _obAiStrategy = null;
-let _obAiStrategyPromise = null;
-
-function renderObSummary() {
-  // Collect all before showing summary
-  for(let i=1;i<=4;i++) collectObStep(i);
-
-  const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'};
-  const weekKm = calcWeekGoalFromProfile(_obData);
-  const longKm = Math.round(weekKm * 0.35);
-  _obAiStrategy = null; // invalida cache anterior — o perfil pode ter mudado desde a última visita a esta tela
-
-  document.getElementById('ob-summary').innerHTML = `
-    <div class="ob-summary-row">
-      <span class="ob-summary-key">Objetivo</span>
-      <span class="ob-summary-val accent">${raceLabels[_obData.raceType]||'Maratona'}</span>
-    </div>
-    <div class="ob-summary-row">
-      <span class="ob-summary-key">Volume inicial</span>
-      <span class="ob-summary-val" id="ob-summary-volume">${weekKm} km / semana</span>
-    </div>
-    <div class="ob-summary-row">
-      <span class="ob-summary-key">Treinos por semana</span>
-      <span class="ob-summary-val">${_obData.daysPerWeek}x</span>
-    </div>
-    <div class="ob-summary-row">
-      <span class="ob-summary-key">Longão inicial</span>
-      <span class="ob-summary-val" id="ob-summary-long">${longKm} km</span>
-    </div>
-    ${hasGeminiKey() ? `<div class="ob-summary-row" style="border-color:rgba(46,232,196,0.2);background:var(--teal-dim)">
-      <span class="ob-summary-key" style="color:var(--teal)">✨ Coach IA</span>
-      <span class="ob-summary-val" id="ob-summary-ai-status" style="font-size:11px;color:var(--teal)">calculando sua estratégia...</span>
-    </div>` : ''}
-  `;
-
-  // v0.9.2.2 (P1): dispara AGORA a mesma chamada de IA que finishOnboarding()
-  // vai usar — e cacheia o resultado. Quando o usuário clicar em avançar,
-  // reaproveitamos esse resultado em vez de gerar uma segunda estratégia
-  // (que poderia divergir). Se a IA ainda não tiver respondido a tempo,
-  // finishOnboarding() simplesmente espera a mesma Promise terminar.
-  if(hasGeminiKey()) {
-    _obAiStrategyPromise = generateStrategyAI({ profile: _obData, weekKm }).then(ai => {
-      _obAiStrategy = ai;
-      if(ai) patchObSummaryWithAI(ai);
-      else {
-        const statusEl = document.getElementById('ob-summary-ai-status');
-        if(statusEl) statusEl.textContent = 'usando estimativa padrão';
-      }
-      return ai;
-    }).catch(() => { _obAiStrategy = null; return null; });
-  } else {
-    _obAiStrategyPromise = Promise.resolve(null);
-  }
-}
-
-// v0.9.2.2 (P1): atualiza o preview com os números REAIS que a IA vai usar no
-// plano final — elimina a divergência entre "Seu Coach está pronto" e o plano gerado.
-function patchObSummaryWithAI(ai) {
-  const volEl = document.getElementById('ob-summary-volume');
-  const longEl = document.getElementById('ob-summary-long');
-  const statusEl = document.getElementById('ob-summary-ai-status');
-  if(volEl)  volEl.innerHTML  = `${ai.weeklyVolume} km / semana <span style="font-size:9px;color:var(--teal);margin-left:4px">✨ IA</span>`;
-  if(longEl) longEl.textContent = `${ai.longRun} km`;
-  if(statusEl) statusEl.textContent = 'estratégia pronta — será usada no seu plano';
-}
-
-// ── Volume calculation from profile ──────────────────────
-function calcWeekGoalFromProfile(data) {
-  const base = { beginner:20, intermediate:40, advanced:55 }[data.level] || 35;
-  const daysMult = { 2:0.6, 3:0.8, 4:1.0, 5:1.2, 6:1.35 }[data.daysPerWeek] || 1.0;
-  const raceMult = { '5k':0.7, '10k':0.85, half:1.0, marathon:1.2, health:0.65 }[data.raceType] || 1.0;
-  return Math.round(base * daysMult * raceMult / 5) * 5; // round to nearest 5
-}
-
-function calcMonthGoalFromWeek(weekKm) {
-  return Math.round(weekKm * 4.2 / 10) * 10;
-}
-
-// ── Finish & save ─────────────────────────────────────────
-async function finishOnboarding() {
-  const btn = document.getElementById('ob-btn-next');
-  btn.disabled = true;
-  btn.textContent = '🧠 Coach analisando seu perfil...';
-
-  const weekKm = calcWeekGoalFromProfile(_obData);
-  const monthKm = calcMonthGoalFromWeek(weekKm);
-  const raceNames = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'};
-
-  // Update state.config with onboarding data
-  state.config.name       = _obData.name;
-  state.config.weight     = _obData.weight;
-  state.config.height     = _obData.height;
-  state.config.weekGoal   = weekKm;
-  state.config.monthGoal  = monthKm;
-  state.config.goalType   = _obData.raceType; // v0.9.1: persiste o tipo de objetivo (health, marathon, etc) — antes se perdia após o onboarding
-  // Dados de prova só fazem sentido se o objetivo não for "saúde e condicionamento"
-  if(_obData.raceType !== 'health') {
-    state.config.raceDate = _obData.raceDate || '';
-    state.config.raceName = raceNames[_obData.raceType] || 'Maratona';
-  } else {
-    state.config.raceDate = '';
-    state.config.raceName = '';
-  }
-  // Rotação de escala — só relevante para 2x2 e 12x36
-  if(['2x2','12x36'].includes(_obData.scale)) {
-    state.config.scaleStart = _obData.scaleStart || today();
-  }
-  state.config.workSchedule = _obData.scale; // v0.9.0: guarda o tipo de escala escolhido
-  if(_obData.scale === 'custom') {
-    state.config.customWorkDays = _obData.customWorkDays || [];
-  }
-
-  // Update athleteProfile
-  state.athleteProfile.goal       = _obData.targetTime || ('Completar ' + (raceNames[_obData.raceType]||'Maratona'));
-  state.athleteProfile.targetTime = _obData.targetTime;
-  // v0.9.3 (P0): musculação agora é explícita. Antes, athleteProfile.strengthPref
-  // ficava vazio ('') por padrão e o Planner/Coach tratavam isso como "sem
-  // preferência" (mas ainda assumiam ABC). Agora: doesStrength=false → strengthPref
-  // null, e Planner/Coach checam doesStrength antes de sugerir qualquer musculação.
-  state.athleteProfile.doesStrength = _obData.doesStrength;
-  state.athleteProfile.strengthPref = _obData.doesStrength ? (_obData.strengthSplit || 'ABC') : null;
-  state.athleteProfile.updatedAt  = new Date().toISOString();
-
-  // Mark onboarding done
-  state.onboardingDone = true;
-
-  // v0.9.2.1-LOCAL: no modo LOCAL_GEMINI, a IA só está disponível se o
-  // usuário configurou uma key (não há mais backend nativo sem key).
-  // Quando AI_BACKEND_MODE voltar a ser 'FIREBASE_BACKEND', basta estar logado.
-  const aiAvailable = AI_BACKEND_MODE === 'FIREBASE_BACKEND' ? !!state.user : hasGeminiKey();
-  let aiPlan = null;
-  if(aiAvailable) {
-    btn.textContent = '✨ Coach preparando seu plano...';
-    // v0.9.2.2 (P1): reaproveita a MESMA chamada já disparada em renderObSummary()
-    // (e mostrada no preview "Seu Coach está pronto"), em vez de gerar uma segunda
-    // estratégia que poderia divergir. Se por algum motivo não houver promise em
-    // andamento (ex: usuário chegou aqui sem passar pela tela de resumo), cai
-    // para uma chamada nova como fallback — mas isso nunca deveria divergir do
-    // preview, já que usa a mesma função generateInitialTrainingStrategy().
-    aiPlan = _obAiStrategyPromise
-      ? await _obAiStrategyPromise
-      : await generateInitialTrainingStrategy(_obData, weekKm);
-  }
-
-  // Aplicar volume da IA se disponível; caso contrário usar regras fixas
-  if(aiPlan) {
-    state.config.weekGoal  = aiPlan.weeklyVolume;
-    state.config.monthGoal = calcMonthGoalFromWeek(aiPlan.weeklyVolume);
-    state.aiStrategy = {
-      weeklyVolume: aiPlan.weeklyVolume,
-      sessions:     aiPlan.sessions,
-      longRun:      aiPlan.longRun,
-      rationale:    aiPlan.rationale,
-      sessionBreakdown: aiPlan.sessionBreakdown || [],
-      generatedAt:  new Date().toISOString(),
-      model:        'gemini-2.5-flash'
-    };
-  }
-
-  // Generate first week plan (usa sessionBreakdown da IA ou fallback a regras)
-  const firstPlan = generateFirstWeekPlan(_obData, state.config.weekGoal, aiPlan);
-
-  // v0.9.3 (P0): cria o strategyCycle — estrutura para a futura Estratégia Viva.
-  // Ainda não regenera nada automaticamente; só registra o ciclo atual para que
-  // checkStrategyCycleCompletion() possa detectar quando ele termina.
-  state.strategyCycle = {
-    goalType: state.config.goalType || _obData.raceType,
-    targetTime: state.athleteProfile.targetTime || '',
-    raceDate: state.config.raceDate || '',
-    generatedAt: new Date().toISOString(),
-    status: 'ACTIVE'
-  };
-
-  // Save everything
-  save();
-
-  // Show first plan screen
-  hideOnboarding();
-  showFirstPlanScreen(firstPlan, state.config.weekGoal, aiPlan);
-}
-
-// ── v0.9.2: Gemini — geração de estratégia inicial ────────
-// v0.9.2.1-LOCAL: assinatura preservada (chamada por finishOnboarding com
-// data, weekKm). Agora delega à camada de abstração generateStrategyAI(),
-// que decide internamente entre LOCAL_GEMINI e FIREBASE_BACKEND.
-async function generateInitialTrainingStrategy(data, weekKm) {
-  try {
-    return await generateStrategyAI({ profile: data, weekKm });
-  } catch(e) {
-    console.warn('v0.9.2.1-local: generateStrategyAI falhou, sem estratégia de IA:', e.message);
-    return null;
-  }
-}
-
-// ── CAMADA DE ABSTRAÇÃO: generateStrategyAI({profile, weekKm}) → plano|null ──
-async function generateStrategyAI({ profile, weekKm }) {
-  if(AI_BACKEND_MODE === 'FIREBASE_BACKEND') {
-    // ── [FIREBASE_BACKEND] desativado no plano Spark — preservado para futura reativação ──
-    if(window._pmCallGenerateStrategy) {
-      const res = await window._pmCallGenerateStrategy({ profile, weekKm });
-      const parsed = res.data;
-      if(parsed && parsed.weeklyVolume && parsed.rationale) return parsed;
-      return null;
-    }
-    throw new Error('Backend Firebase Functions não inicializado.');
-  }
-
-  // ── [LOCAL_GEMINI] modo ativo — chamada direta ao Gemini com key local ──
-  if(!hasGeminiKey()) return null;
-  return await generateInitialTrainingStrategyLegacy(profile, weekKm);
-}
-
-// ── Implementação LOCAL_GEMINI: chamada direta ao Gemini com key local ──
-async function generateInitialTrainingStrategyLegacy(data, weekKm) {
-  const key = getGeminiKey();
-  if(!key) return null;
-
-  const scaleLabels = {
-    '5x2':'5x2 (segunda a sexta)', '6x1':'6x1', '2x2':'2x2 (2 dias trab / 2 folga)',
-    '12x36':'12x36', 'custom':'rotina personalizada'
-  };
-  const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10 km','5k':'5 km',health:'Saúde e Condicionamento'};
-  const levelLabels = {beginner:'Iniciante',intermediate:'Intermediário',advanced:'Avançado'};
-
-  const prompt = `Você é um Coach de corrida especializado. Analise o perfil do atleta e gere uma estratégia de treinamento inicial personalizada.
-
-PERFIL:
-- Nome: ${data.name}
-- Peso: ${data.weight}kg | Altura: ${data.height}cm
-- Nível: ${levelLabels[data.level]||data.level}
-- Melhor tempo anterior: ${data.bestTime || 'Não informado'}
-- Objetivo: ${raceLabels[data.raceType]||data.raceType}
-- Meta de tempo: ${data.targetTime || 'Completar'}
-- Data da prova: ${data.raceDate || 'Não definida'}
-- Disponibilidade: ${data.daysPerWeek} dias/semana
-- Rotina de trabalho: ${scaleLabels[data.scale]||data.scale}
-- Volume calculado pelas regras: ${weekKm}km/semana
-
-TAREFA: Gere uma estratégia de primeira semana PERSONALIZADA. Considere:
-1. O nível real do atleta (não apenas intermediário genérico)
-2. A disponibilidade semanal e rotina de trabalho
-3. A meta específica e o prazo
-4. Um volume que seja desafiador mas seguro para a semana 1
-
-Responda APENAS com JSON válido, sem markdown, sem texto extra:
-{
-  "weeklyVolume": <número inteiro de km>,
-  "sessions": <número de sessões>,
-  "longRun": <km do longão inicial>,
-  "rationale": "<2-3 frases em português explicando a estratégia personalizada>",
-  "sessionBreakdown": [
-    {"type": "long|z2|interval|progressivo|strength|recovery", "dist": <km ou 0>, "pace": "<pace range>", "description": "<descrição curta>"}
-  ]
-}`;
-
-  try {
-    const res = await Promise.race([
-      fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            contents: [{role:'user', parts:[{text: prompt}]}],
-            generationConfig: { maxOutputTokens: 1024, temperature: 0.4, thinkingConfig: { thinkingBudget: 0 } }
-          })
-        }
-      ),
-      new Promise((_,rej) => setTimeout(()=>rej(new Error('timeout')), 12000))
-    ]);
-
-    if(!res.ok) return null;
-    const data2 = await res.json();
-    const raw = data2.candidates?.[0]?.content?.parts?.filter(p=>!p.thought).map(p=>p.text||'').join('')||'';
-    const clean = raw.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(clean);
-
-    // Validação mínima
-    if(!parsed.weeklyVolume || !parsed.rationale) return null;
-    // Sanity clamp: volume entre 80% e 150% do calculado pelas regras
-    parsed.weeklyVolume = Math.max(Math.round(weekKm*0.8), Math.min(Math.round(weekKm*1.5), parsed.weeklyVolume));
-    parsed.longRun = parsed.longRun || Math.round(parsed.weeklyVolume * 0.35);
-    parsed.sessions = parsed.sessions || data.daysPerWeek;
-    return parsed;
-  } catch(e) {
-    console.warn('v0.9.2: AI strategy (legacy) failed, using rule-based fallback:', e.message);
-    return null;
-  }
-}
-
-// ── First week plan generator ─────────────────────────────
-// v0.9.2: usa sessionBreakdown da IA quando disponível
-function generateFirstWeekPlan(data, weekKm, aiPlan=null) {
-  const days = aiPlan?.sessions || data.daysPerWeek;
-  const ws = weekStart(today());
-  // Start from next monday if today is mid-week
-  const startDate = new Date(ws+'T12:00:00');
-  if(startDate <= new Date()) startDate.setDate(startDate.getDate()+7);
-  const startStr = startDate.toISOString().split('T')[0];
-
-  const plans = [];
-  // Simple distribution based on days
-  const distributions = {
-    2: [1,6],        // Ter, Dom
-    3: [1,3,6],      // Ter, Qui, Dom
-    4: [1,3,5,6],    // Ter, Qui, Sex, Sáb (longão)
-    5: [1,2,3,5,6],
-    6: [0,1,2,3,5,6]
-  };
-  const offsets = distributions[days] || distributions[4];
-
-  const longDay = offsets[offsets.length-1]; // last day = longão
-  const totalKm = weekKm;
-  const longKm  = aiPlan?.longRun || Math.round(totalKm * 0.35);
-  const easyKm  = Math.round((totalKm - longKm) / (offsets.length - 1));
-
-  // Usar sessionBreakdown da IA se disponível (mapeia por posição)
-  const aiSessions = aiPlan?.sessionBreakdown || [];
-
-  offsets.forEach((dayOffset, idx) => {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + dayOffset);
-    const dateStr = d.toISOString().split('T')[0];
-    const isLong  = dayOffset === longDay;
-
-    // IA session para este dia (se disponível)
-    const aiSession = aiSessions[idx];
-
-    plans.push({
-      id: `ob_plan_${dateStr}`,
-      date: dateStr,
-      type: aiSession?.type || (isLong ? 'long' : 'z2'),
-      dist: aiSession?.dist ?? (isLong ? longKm : easyKm),
-      pace: aiSession?.pace || '',
-      hr: 0, rpe: 0, fatigue: 0,
-      notes: aiSession?.description || (isLong ? 'Primeiro longão — pace confortável' : 'Corrida base Z2 — respiração controlada'),
-      planned: true
-    });
-  });
-
-  // Add to state.workouts (remove any existing planned for that week)
-  const endDate = new Date(startDate); endDate.setDate(endDate.getDate()+6);
-  const endStr  = endDate.toISOString().split('T')[0];
-  state.workouts = state.workouts.filter(w => !(w.planned && w.date >= startStr && w.date <= endStr));
-  state.workouts.push(...plans);
-  save();
-
-  return { plans, weekKm, longKm, easyKm, days, startStr, endStr };
-}
-
-// ── First plan screen ─────────────────────────────────────
-function showFirstPlanScreen(planData, weekKm, aiPlan=null) {
-  const screen = document.getElementById('screen-first-plan');
-  const raceLabel = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'}[_obData.raceType]||'Maratona';
-
-  document.getElementById('fp-sub').innerHTML =
-    `${_obData.name}, seu Coach preparou a primeira semana.<br>Confira e começa a correr! 🎉`;
-
-  const rationaleRow = aiPlan?.rationale
-    ? `<div class="fp-plan-row" style="border-color:rgba(232,245,90,0.15);background:var(--accent-dim)">
-        <span class="fp-plan-key" style="color:var(--accent)">✨ Coach diz</span>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text2);text-align:right;max-width:220px;line-height:1.5">${aiPlan.rationale}</span>
-       </div>`
-    : '';
-
-  document.getElementById('fp-plan-preview').innerHTML = `
-    ${rationaleRow}
-    <div class="fp-plan-row">
-      <span class="fp-plan-key">Objetivo</span>
-      <span class="fp-plan-val">${raceLabel}</span>
-    </div>
-    <div class="fp-plan-row">
-      <span class="fp-plan-key">Volume inicial</span>
-      <span class="fp-plan-val">${weekKm} km / semana${aiPlan?'<span style="font-size:9px;color:var(--teal);margin-left:6px">✨ IA</span>':''}</span>
-    </div>
-    <div class="fp-plan-row">
-      <span class="fp-plan-key">Sessões planejadas</span>
-      <span class="fp-plan-val">${planData.plans.length} treinos</span>
-    </div>
-    <div class="fp-plan-row">
-      <span class="fp-plan-key">Longão inicial</span>
-      <span class="fp-plan-val">${planData.longKm} km</span>
-    </div>
-    <div class="fp-plan-row">
-      <span class="fp-plan-key">Semana</span>
-      <span class="fp-plan-val">${formatDate(planData.startStr)} →</span>
-    </div>
-  `;
-
-  screen.classList.remove('hidden');
-}
-
-function enterDashboard() {
-  document.getElementById('screen-first-plan').classList.add('hidden');
-  goTo('sec-dashboard');
-}
-
-// ── Hook into onAuthStateChanged (robust — called directly from auth listener) ──
-window._pmCheckOnboardingAfterAuth = function() {
-  const decide = () => {
-    // Backward compatibility: existing users with workout history never see onboarding
-    if(!state.onboardingDone && state.workouts && state.workouts.length > 0) {
-      state.onboardingDone = true;
-      save();
-      return;
-    }
-    if(!state.onboardingDone) checkOnboarding();
-  };
-
-  // v0.9.3.1 (P0): só vale a pena esperar a nuvem se HÁ alguém logado.
-  // Para sessão anônima, decidir imediatamente — não há nada para baixar,
-  // e esperar 800ms+downloadFromCloud() sem necessidade era um dos motivos
-  // do onboarding nunca aparecer a tempo (ou nunca aparecer) para novos usuários.
-  if(state.user) {
-    setTimeout(() => {
-      if(typeof downloadFromCloud === 'function') {
-        downloadFromCloud().then(decide).catch(decide);
-      } else {
-        decide();
-      }
-    }, 800); // slight delay to let Firebase load complete
-  } else {
-    decide();
-  }
-};
-
-// ── Safety net for local-only users (no login) ────────────
-// If there are already workouts, user is not new → skip onboarding
-window.addEventListener('load', () => {
-  if(!state.onboardingDone && state.workouts && state.workouts.length > 0) {
-    state.onboardingDone = true;
-    save();
-  }
-});
 </script>
 </body>
 </html>
