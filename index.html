@@ -1077,10 +1077,49 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </button>
       </div>
 
+      <!-- v1.0 prep: Admin panel — visível apenas para o ADMIN_UID -->
+      <div id="admin-gemini-card" class="card" style="display:none;margin-bottom:16px;border-color:rgba(232,245,90,0.2)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-size:14px">🔐</span>
+          <div class="label" style="margin-bottom:0;color:var(--accent)">Gemini (Admin)</div>
+          <div id="admin-gemini-status" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid rgba(232,245,90,0.3);color:var(--accent);margin-left:auto">carregando...</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:14px;line-height:1.6">
+          Configuração remota do Coach IA. Todos os usuários autenticados usam automaticamente. Apenas você pode editar.
+        </div>
+        <div class="form-group">
+          <label class="form-label">API Key (Gemini)</label>
+          <div style="position:relative">
+            <input type="password" class="form-input" id="admin-gemini-key" autocomplete="new-password" data-lpignore="true" placeholder="AQ.xxx ou AIzaSy..."/>
+            <button onclick="toggleAdminKeyVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px" id="admin-key-eye">👁</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Modelo</label>
+          <select class="form-select" id="admin-gemini-model">
+            <option value="gemini-2.5-flash">gemini-2.5-flash (padrão)</option>
+            <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Temperature: <span id="admin-temp-val">0.7</span></label>
+          <input type="range" min="0" max="1" step="0.1" value="0.7" id="admin-gemini-temp"
+            oninput="document.getElementById('admin-temp-val').textContent=this.value"
+            style="width:100%;accent-color:var(--accent)"/>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:10px">
+          <input type="checkbox" id="admin-gemini-enabled" checked style="accent-color:var(--accent);width:16px;height:16px"/>
+          <label class="form-label" style="margin-bottom:0">Coach IA habilitado para todos os usuários</label>
+        </div>
+        <button class="btn btn-primary btn-full" onclick="adminSaveGeminiConfig()">Salvar no Firestore</button>
+        <div id="admin-gemini-save-status" style="font-family:var(--mono);font-size:10px;margin-top:8px;text-align:center;display:none"></div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:10px;line-height:1.5">
+          Firestore path: <code>config/gemini</code> · Última atualização: <span id="admin-config-updated">--</span>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span style="font-size:16px">✨</span>
-          <div class="label" style="margin-bottom:0">Coach AI</div>
           <div id="gemini-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">inativo</div>
         </div>
         <div id="coach-ai-intro" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;line-height:1.6">
@@ -2854,55 +2893,154 @@ function renderFitnessEvolution() {
   }).join('');
 }
 
-// ==================== GEMINI KEY ====================
+// ==================== GEMINI / AI ARCHITECTURE ====================
 // ════════════════════════════════════════════════════════════════════════
-// AI_BACKEND_MODE — camada de abstração (v0.9.2.1-LOCAL)
+// AI_BACKEND_MODE — Pacemaker v1.0 prep
 // ════════════════════════════════════════════════════════════════════════
-// 'LOCAL_GEMINI'    → chamada direta ao Gemini com key local (ATIVO — plano Spark)
-// 'FIREBASE_BACKEND' → Cloud Functions + Secret Manager (requer plano Blaze)
 //
-// Para reativar o backend quando migrar para o plano Blaze, troque o valor
-// abaixo para 'FIREBASE_BACKEND'. Nenhuma outra mudança de código é
-// necessária — toda a lógica de IA passa por callCoachAI() e
-// generateStrategyAI(), que já sabem rotear para os dois modos.
-// ════════════════════════════════════════════════════════════════════════
-const AI_BACKEND_MODE = 'LOCAL_GEMINI';
-
-// ════════════════════════════════════════════════════════════════════════
-// v0.9.3 (P1) — TESTER_MODE: facilita os testes dos 5 usuários iniciais sem
-// exigir que cada um configure sua própria Gemini API Key. Projeto continua
-// em Firebase Spark — SEM Cloud Functions, SEM backend, SEM Blaze. A key
-// fica embutida no app e é usada apenas como fallback (a key do próprio
-// usuário, se configurada, sempre tem prioridade).
+//   'REMOTE_CONFIG'    → (ATIVO) key vem do Firestore doc config/gemini.
+//                        Admin atualiza sem redeploy, todos usam automaticamente.
+//   'LOCAL_GEMINI'     → key configurada pelo próprio usuário (legacy/fallback).
+//   'FIREBASE_BACKEND' → Cloud Function proxy (v1.0 futuro — requer Blaze plan).
 //
-// ⚠️ REMOVER ANTES DA VERSÃO PÚBLICA — uma key embutida no bundle do cliente
-// é visível a qualquer pessoa que inspecione o código-fonte. Isso só é
-// aceitável temporariamente, para um grupo pequeno e controlado de testers.
+// Para migrar para Cloud Functions: troque para 'FIREBASE_BACKEND'.
+// callCoachAI() e generateStrategyAI() já estão prontos para os 3 modos.
 // ════════════════════════════════════════════════════════════════════════
-const TESTER_MODE = true; // ⚠️ Remover antes da versão pública.
-// v0.9.3.1: chave não embutida no app por segurança. Configure via
-// Configurações → Coach AI → Avançado, ou cole abaixo localmente.
-const _TESTER_GEMINI_KEY = ''; // não embutir em produção
+const AI_BACKEND_MODE = 'REMOTE_CONFIG';
 
-// v0.9.3.1 (P0): validação de formato — avisa alto e claro no console se o
-// TESTER_MODE estiver ativo com uma key vazia ou com formato incorreto, em
-// vez de deixar o erro só aparecer pro usuário final dentro do chat do Coach.
-if(TESTER_MODE) {
-  if(!_TESTER_GEMINI_KEY) {
-    console.warn('⚠️ TESTER_MODE está ativo, mas _TESTER_GEMINI_KEY está vazia. O Coach IA vai falhar para usuários sem key própria.');
-  } else if (!_TESTER_GEMINI_KEY || _TESTER_GEMINI_KEY.length < 20) {
-    console.warn('TESTER_GEMINI_KEY inválida');
+// ── Admin UID ──────────────────────────────────────────────────────────
+// Único usuário que pode editar config/gemini no Firestore.
+// Todos os usuários autenticados LEEM, só o admin ESCREVE
+// (reforçado pelas Firestore Security Rules — ver README).
+// Para descobrir seu UID: F12 → Console →
+//   JSON.parse(Object.values(localStorage).find(v=>v?.includes('"uid"'))||'{}')?.uid
+const ADMIN_UID = 'LIyUUN3B7bybl1s0r0kGB16cjsJm1'; // ⚠️ Cole aqui o seu Firebase UID antes do deploy
+
+// ── Remote config state ────────────────────────────────────────────────
+// Preenchida por loadRemoteGeminiConfig() na inicialização.
+// Nunca hardcoded — vive só em memória durante a sessão.
+// Estrutura: { apiKey, enabled, model, temperature, updatedAt, updatedBy }
+let remoteGeminiConfig = null;
+
+async function loadRemoteGeminiConfig() {
+  if(!window._fbDb || !window._fbDoc || !window._fbGetDoc) return;
+  try {
+    const ref = window._fbDoc(window._fbDb, 'config', 'gemini');
+    const snap = await window._fbGetDoc(ref);
+    if(snap.exists()) {
+      remoteGeminiConfig = snap.data();
+      console.info('[PM:AI] Remote config loaded — model:', remoteGeminiConfig.model, '| enabled:', remoteGeminiConfig.enabled);
+    } else {
+      console.warn('[PM:AI] config/gemini não existe. Crie via painel Admin em Configurações.');
+    }
+  } catch(e) {
+    console.warn('[PM:AI] Falha ao carregar config remota:', e.message);
   }
+  if(typeof updateGeminiBadge === 'function') updateGeminiBadge();
 }
+
+async function saveRemoteGeminiConfig(cfg) {
+  if(!isAdmin()) throw new Error('Acesso negado — somente o admin pode alterar a config do Gemini.');
+  if(!window._fbDb || !window._fbDoc || !window._fbSetDoc) throw new Error('Firestore não disponível.');
+  const payload = {
+    apiKey:      cfg.apiKey      || '',
+    enabled:     cfg.enabled     !== false,
+    model:       cfg.model       || 'gemini-2.5-flash',
+    temperature: typeof cfg.temperature === 'number' ? cfg.temperature : 0.7,
+    updatedAt:   new Date().toISOString(),
+    updatedBy:   state.user?.uid || 'unknown'
+  };
+  await window._fbSetDoc(window._fbDoc(window._fbDb, 'config', 'gemini'), payload);
+  remoteGeminiConfig = payload;
+  if(typeof updateGeminiBadge === 'function') updateGeminiBadge();
+}
+
+function isAdmin() {
+  return !!(ADMIN_UID && state.user?.uid === ADMIN_UID);
+}
+
+// TESTER_MODE e _TESTER_GEMINI_KEY mantidos como no-ops para não quebrar
+// referências legacy no restante do código (badge, loadGeminiKeyField, etc).
+const TESTER_MODE = false;
+const _TESTER_GEMINI_KEY = '';
+// validação de startup removida (TESTER_MODE desativado)
 
 const GEMINI_KEY = 'pacemaker_gemini_key';
 function getGeminiKey() {
+  // Prioridade: key local do usuário > remote config > vazio
   const own = localStorage.getItem(GEMINI_KEY) || '';
-  if(own) return own; // key do próprio usuário sempre tem prioridade
-  if(TESTER_MODE && _TESTER_GEMINI_KEY) return _TESTER_GEMINI_KEY; // ⚠️ Remover antes da versão pública.
+  if(own) return own;
+  if(AI_BACKEND_MODE === 'REMOTE_CONFIG' && remoteGeminiConfig?.apiKey && remoteGeminiConfig?.enabled !== false) {
+    return remoteGeminiConfig.apiKey;
+  }
   return '';
 }
 function hasGeminiKey() { return !!getGeminiKey(); }
+
+// ── Admin Gemini Panel functions ─────────────────────────────────────────
+function renderAdminGeminiCard() {
+  const card = document.getElementById('admin-gemini-card');
+  if(!card) return;
+  card.style.display = isAdmin() ? '' : 'none';
+  if(!isAdmin()) return;
+
+  // Populate fields from current remoteGeminiConfig
+  const cfg = remoteGeminiConfig;
+  const keyEl    = document.getElementById('admin-gemini-key');
+  const modelEl  = document.getElementById('admin-gemini-model');
+  const tempEl   = document.getElementById('admin-gemini-temp');
+  const tempVal  = document.getElementById('admin-temp-val');
+  const enabledEl= document.getElementById('admin-gemini-enabled');
+  const statusEl = document.getElementById('admin-gemini-status');
+  const updatedEl= document.getElementById('admin-config-updated');
+
+  if(cfg) {
+    if(keyEl)     keyEl.value     = cfg.apiKey || '';
+    if(modelEl)   modelEl.value   = cfg.model  || 'gemini-2.5-flash';
+    if(tempEl)    { tempEl.value  = cfg.temperature ?? 0.7; if(tempVal) tempVal.textContent = tempEl.value; }
+    if(enabledEl) enabledEl.checked = cfg.enabled !== false;
+    if(statusEl)  { statusEl.textContent = cfg.enabled !== false ? '✓ ativo' : 'desativado'; statusEl.style.color = cfg.enabled !== false ? 'var(--teal)' : 'var(--orange)'; }
+    if(updatedEl) updatedEl.textContent = cfg.updatedAt ? new Date(cfg.updatedAt).toLocaleString('pt-BR') : '--';
+  } else {
+    if(statusEl) { statusEl.textContent = 'não configurado'; statusEl.style.color = 'var(--text3)'; }
+  }
+}
+
+async function adminSaveGeminiConfig() {
+  const keyEl    = document.getElementById('admin-gemini-key');
+  const modelEl  = document.getElementById('admin-gemini-model');
+  const tempEl   = document.getElementById('admin-gemini-temp');
+  const enabledEl= document.getElementById('admin-gemini-enabled');
+  const saveStatus = document.getElementById('admin-gemini-save-status');
+
+  const cfg = {
+    apiKey:      keyEl?.value.trim()   || '',
+    model:       modelEl?.value        || 'gemini-2.5-flash',
+    temperature: parseFloat(tempEl?.value || '0.7'),
+    enabled:     enabledEl?.checked    !== false
+  };
+
+  if(!cfg.apiKey) { showToast('Cole a API Key antes de salvar'); return; }
+  if(saveStatus) { saveStatus.textContent = 'Salvando...'; saveStatus.style.color='var(--text3)'; saveStatus.style.display='block'; }
+
+  try {
+    await saveRemoteGeminiConfig(cfg);
+    if(saveStatus) { saveStatus.textContent = '✓ Salvo no Firestore com sucesso'; saveStatus.style.color='var(--teal)'; }
+    renderAdminGeminiCard();
+    showToast('Config do Gemini atualizada para todos os usuários ✓');
+  } catch(e) {
+    if(saveStatus) { saveStatus.textContent = `Erro: ${e.message}`; saveStatus.style.color='var(--red)'; }
+    showToast('Erro ao salvar: ' + e.message);
+  }
+}
+
+function toggleAdminKeyVisibility() {
+  const input = document.getElementById('admin-gemini-key');
+  const btn   = document.getElementById('admin-key-eye');
+  if(!input) return;
+  input.type = input.type === 'password' ? 'text' : 'password';
+  if(btn) btn.textContent = input.type === 'password' ? '👁' : '🙈';
+}
 
 function toggleGeminiKeyVisibility() {
   const inp = document.getElementById('cfg-gemini-key');
@@ -2910,47 +3048,38 @@ function toggleGeminiKeyVisibility() {
 }
 
 function loadGeminiKeyField() {
-  const k = localStorage.getItem(GEMINI_KEY) || ''; // v0.9.3: só preenche o campo com a key PRÓPRIA do usuário, nunca com a embutida de teste
+  // Renderiza o painel admin (visível só pro ADMIN_UID)
+  renderAdminGeminiCard();
+
+  const k = localStorage.getItem(GEMINI_KEY) || '';
   const el = document.getElementById('cfg-gemini-key');
   if(el && k) el.value = k;
 
-  // v0.9.2.1-LOCAL: ajusta a cópia da UI conforme o modo ativo, sem alterar
-  // a estrutura visual do card — só o texto, para não mentir pro usuário.
-  const intro = document.getElementById('coach-ai-intro');
+  const intro     = document.getElementById('coach-ai-intro');
   const toggleBtn = document.getElementById('adv-gemini-toggle-btn');
-  const toggleLabel = document.getElementById('adv-gemini-toggle-label');
-  const note = document.getElementById('advanced-gemini-note');
-  const keyLabel = document.getElementById('gemini-key-label');
-  const section = document.getElementById('advanced-gemini-section');
+  const note      = document.getElementById('advanced-gemini-note');
+  const keyLabel  = document.getElementById('gemini-key-label');
+  const section   = document.getElementById('advanced-gemini-section');
 
-  // v0.9.3 (P1): TESTER_MODE — sem key embutida, o campo de configuração
-  // precisa aparecer para que o usuário consiga colar a própria key.
-  if(TESTER_MODE) {
-    const hasOwnKey = !!localStorage.getItem(GEMINI_KEY);
-    if(intro) intro.textContent = hasOwnKey
-      ? 'Coach IA ativo com sua Gemini API Key.'
-      : 'Configure sua Gemini API Key abaixo para ativar o Coach IA.';
-    if(toggleBtn) toggleBtn.style.display = 'none'; // campo sempre visível, sem toggle
+  if(AI_BACKEND_MODE === 'REMOTE_CONFIG') {
+    // Config vem do Firestore — usuário comum não precisa fazer nada.
+    // Seção "Avançado" permanece colapsada; admin vê o painel dedicado acima.
+    const isActive = remoteGeminiConfig?.enabled !== false && !!remoteGeminiConfig?.apiKey;
+    if(intro) intro.textContent = isActive
+      ? 'Coach IA ativo — configurado pelo administrador.'
+      : 'Coach IA ainda não configurado. Aguardando ativação pelo administrador.';
+    if(toggleBtn) toggleBtn.style.display = 'none';
+    if(section)   section.style.display   = 'none';
+  } else if(AI_BACKEND_MODE === 'LOCAL_GEMINI') {
+    if(intro) intro.textContent = 'Configure sua Gemini API Key para ativar o Coach IA.';
+    if(toggleBtn) toggleBtn.style.display = 'none';
     if(note) note.innerHTML = 'Crie sua key gratuita no Google AI Studio. Fica salva só neste dispositivo, nunca enviada ao servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a>';
     if(keyLabel) keyLabel.textContent = 'Gemini API Key';
-    if(section) section.style.display = 'block';
-    updateGeminiBadge();
-    return;
-  }
-
-  if(AI_BACKEND_MODE === 'LOCAL_GEMINI') {
-    if(intro) intro.textContent = 'O Coach IA roda direto no seu navegador com a Gemini API — configure sua key gratuita para ativar.';
-    if(toggleBtn) toggleBtn.style.display = 'none'; // não há nada "avançado" a esconder — a key é obrigatória aqui
-    if(note) note.innerHTML = 'Crie sua key gratuita no Google AI Studio. Fica salva só neste dispositivo, nunca é enviada a nenhum servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a>';
-    if(keyLabel) keyLabel.textContent = 'Gemini API Key';
-    if(section) section.style.display = 'block'; // sempre visível — é o único caminho de IA neste modo
+    if(section)  section.style.display = 'block';
   } else {
-    if(intro) intro.textContent = 'O Pacemaker já vem com um Coach IA nativo — basta estar logado, sem precisar configurar nenhuma chave.';
-    if(toggleBtn) toggleBtn.style.display = 'block';
-    if(toggleLabel) toggleLabel.textContent = '⚙️ Avançado: usar minha própria Gemini API Key';
-    if(note) note.innerHTML = 'Opcional. Use sua própria key apenas se quiser um modelo diferente do nativo, ou se preferir não depender do backend do Pacemaker. Salva só no dispositivo, nunca enviada ao servidor.<br/><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com/app/apikey ↗</a>';
-    if(keyLabel) keyLabel.textContent = 'Gemini API Key (opcional)';
-    if(section) section.style.display = 'none';
+    if(intro) intro.textContent = 'Coach IA nativo ativo.';
+    if(toggleBtn) toggleBtn.style.display = 'none';
+    if(section)   section.style.display   = 'none';
   }
 
   updateGeminiBadge();
@@ -2968,20 +3097,18 @@ function toggleAdvancedGeminiSection() {
 }
 
 function updateGeminiBadge() {
-  const badge = document.getElementById('gemini-badge');
-  const coachBadge = document.getElementById('coach-ai-badge');
-  const nativeStatusEl = document.getElementById('coach-native-status');
-  // v0.9.2.1-LOCAL: "nativo sem key" só existe no modo FIREBASE_BACKEND.
-  // No modo LOCAL_GEMINI (ativo agora), o Coach depende da key configurada.
-  const nativeAvailable = AI_BACKEND_MODE === 'FIREBASE_BACKEND' && !!(state.user && window._pmCallCoachChat);
-  // v0.9.3 (P1): distingue "usuário configurou a própria key" de "TESTER_MODE
-  // está usando a key embutida" — sem expor esse detalhe na UI (a key embutida
-  // nunca aparece, só o resultado: Coach IA ativo).
-  const hasOwnKey = !!localStorage.getItem(GEMINI_KEY);
-  const aiActive = nativeAvailable || hasGeminiKey();
+  const badge         = document.getElementById('gemini-badge');
+  const coachBadge    = document.getElementById('coach-ai-badge');
+  const nativeStatusEl= document.getElementById('coach-native-status');
+
+  const remoteActive  = AI_BACKEND_MODE === 'REMOTE_CONFIG' && !!remoteGeminiConfig?.apiKey && remoteGeminiConfig?.enabled !== false;
+  const localActive   = !!localStorage.getItem(GEMINI_KEY);
+  const cloudFnActive = AI_BACKEND_MODE === 'FIREBASE_BACKEND' && !!(state.user && window._pmCallCoachChat);
+  const aiActive      = remoteActive || localActive || cloudFnActive;
+
   if(aiActive) {
     if(badge) {
-      badge.textContent = hasOwnKey ? '✓ key ativa' : '✓ ativo';
+      badge.textContent = remoteActive && !localActive ? '✓ remoto' : localActive ? '✓ key local' : '✓ ativo';
       badge.style.color='var(--teal)'; badge.style.borderColor='rgba(46,232,196,0.3)'; badge.style.background='var(--teal-dim)';
     }
     if(coachBadge) { coachBadge.textContent='✨ Coach IA'; coachBadge.style.color='var(--teal)'; coachBadge.style.background='var(--teal-dim)'; coachBadge.style.borderColor='rgba(46,232,196,0.3)'; }
@@ -2989,18 +3116,19 @@ function updateGeminiBadge() {
     if(badge) { badge.textContent='inativo'; badge.style.color='var(--text3)'; badge.style.borderColor='var(--border2)'; badge.style.background='transparent'; }
     if(coachBadge) { coachBadge.textContent='offline'; coachBadge.style.color='var(--accent)'; coachBadge.style.background='var(--accent-dim)'; coachBadge.style.borderColor='rgba(232,245,90,0.3)'; }
   }
+
   if(nativeStatusEl) {
-    if(TESTER_MODE) {
-      nativeStatusEl.textContent = '✓ Coach IA ativo (modo testers).';
+    if(remoteActive && !localActive) {
+      nativeStatusEl.textContent = `✓ Coach IA ativo — ${remoteGeminiConfig.model || 'gemini-2.5-flash'}`;
       nativeStatusEl.style.color = 'var(--teal)';
-    } else if(hasOwnKey) {
-      nativeStatusEl.textContent = '🔑 Coach IA ativo com sua Gemini API Key.';
+    } else if(localActive) {
+      nativeStatusEl.textContent = '🔑 Usando sua Gemini API Key local.';
       nativeStatusEl.style.color = 'var(--teal)';
-    } else if(nativeAvailable) {
-      nativeStatusEl.textContent = '✓ Coach IA nativo ativo — pronto para usar.';
-      nativeStatusEl.style.color = 'var(--teal)';
+    } else if(AI_BACKEND_MODE === 'REMOTE_CONFIG') {
+      nativeStatusEl.textContent = 'Coach IA aguardando configuração do administrador.';
+      nativeStatusEl.style.color = 'var(--text3)';
     } else {
-      nativeStatusEl.textContent = 'Configure sua Gemini API Key abaixo para ativar o Coach IA.';
+      nativeStatusEl.textContent = 'Configure sua Gemini API Key para ativar o Coach IA.';
       nativeStatusEl.style.color = 'var(--text3)';
     }
   }
@@ -4333,7 +4461,9 @@ async function sendToCoach(userText) {
 // ── callCoachAI({systemPrompt, history, userText}) → {reply} ──
 async function callCoachAI({ systemPrompt, history, userText }) {
   if(AI_BACKEND_MODE === 'FIREBASE_BACKEND') {
-    // ── [FIREBASE_BACKEND] desativado no plano Spark — preservado para futura reativação ──
+    // ── [FIREBASE_BACKEND] — v1.0 futuro, requer Blaze plan ──────────────
+    // Interface idêntica — a única mudança quando chegar a hora é esta
+    // constante e a inicialização de firebase-functions.js.
     if(window._pmCallCoachChat) {
       try {
         const res = await window._pmCallCoachChat({ systemPrompt, history, userText });
@@ -4344,13 +4474,32 @@ async function callCoachAI({ systemPrompt, history, userText }) {
           const err = new Error('⚠️ Limite de uso do Coach IA atingido por hoje. Tente novamente mais tarde.');
           err.handled = true; throw err;
         }
-        throw e; // deixa o caller decidir (ex: cair para LOCAL_GEMINI no futuro)
+        throw e;
       }
     }
     throw new Error('Backend Firebase Functions não inicializado.');
   }
 
-  // ── [LOCAL_GEMINI] modo ativo — chamada direta ao Gemini com key local ──
+  // ── [REMOTE_CONFIG] modo ativo ─────────────────────────────────────────
+  // Key vem do Firestore config/gemini — carregada no init, mantida em
+  // remoteGeminiConfig. Usa model e temperature configurados pelo admin.
+  if(AI_BACKEND_MODE === 'REMOTE_CONFIG') {
+    if(!remoteGeminiConfig?.apiKey || remoteGeminiConfig?.enabled === false) {
+      // Fallback para key local se o usuário tiver configurado uma própria
+      const localKey = localStorage.getItem(GEMINI_KEY) || '';
+      if(localKey) return await callGeminiDirect(localKey, systemPrompt, history, userText);
+      const err = new Error('Coach IA não está configurado ainda. Aguarde a ativação pelo admin.');
+      err.handled = true; throw err;
+    }
+    return await callGeminiDirect(
+      remoteGeminiConfig.apiKey,
+      systemPrompt, history, userText,
+      remoteGeminiConfig.model,
+      remoteGeminiConfig.temperature
+    );
+  }
+
+  // ── [LOCAL_GEMINI] fallback legacy ────────────────────────────────────
   if(!hasGeminiKey()) {
     const err = new Error('Configure sua Gemini API Key em Configurações para ativar o Coach IA.');
     err.handled = true; throw err;
@@ -4360,7 +4509,7 @@ async function callCoachAI({ systemPrompt, history, userText }) {
 
 // ── Implementação LOCAL_GEMINI: chamada direta à API do Gemini ──
 // (Lógica preservada de sendToGemini() da v0.9.2, agora isolada e reutilizável.)
-async function callGeminiDirect(key, systemPrompt, history, userText) {
+async function callGeminiDirect(key, systemPrompt, history, userText, model='gemini-2.5-flash', temperature=0.7) {
   const geminiHistory = (history || []).map(m => ({
     role: m.role === 'coach' ? 'model' : 'user',
     parts: [{ text: m.text }]
@@ -4374,7 +4523,7 @@ async function callGeminiDirect(key, systemPrompt, history, userText) {
     ],
     generationConfig: {
       maxOutputTokens: 8192,
-      temperature: 0.7,
+      temperature,
       topP: 0.9,
       thinkingConfig: { thinkingBudget: 0 }
     },
@@ -4387,7 +4536,7 @@ async function callGeminiDirect(key, systemPrompt, history, userText) {
   };
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }
   );
 
@@ -6881,7 +7030,6 @@ async function generateInitialTrainingStrategy(data, weekKm) {
 // ── CAMADA DE ABSTRAÇÃO: generateStrategyAI({profile, weekKm}) → plano|null ──
 async function generateStrategyAI({ profile, weekKm }) {
   if(AI_BACKEND_MODE === 'FIREBASE_BACKEND') {
-    // ── [FIREBASE_BACKEND] desativado no plano Spark — preservado para futura reativação ──
     if(window._pmCallGenerateStrategy) {
       const res = await window._pmCallGenerateStrategy({ profile, weekKm });
       const parsed = res.data;
@@ -6891,7 +7039,7 @@ async function generateStrategyAI({ profile, weekKm }) {
     throw new Error('Backend Firebase Functions não inicializado.');
   }
 
-  // ── [LOCAL_GEMINI] modo ativo — chamada direta ao Gemini com key local ──
+  // REMOTE_CONFIG e LOCAL_GEMINI usam a mesma implementação local
   if(!hasGeminiKey()) return null;
   return await generateInitialTrainingStrategyLegacy(profile, weekKm);
 }
@@ -7093,19 +7241,20 @@ window._pmCheckOnboardingAfterAuth = function() {
     if(!state.onboardingDone) checkOnboarding();
   };
 
-  // v0.9.3.1 (P0): só vale a pena esperar a nuvem se HÁ alguém logado.
-  // Para sessão anônima, decidir imediatamente — não há nada para baixar,
-  // e esperar 800ms+downloadFromCloud() sem necessidade era um dos motivos
-  // do onboarding nunca aparecer a tempo (ou nunca aparecer) para novos usuários.
   if(state.user) {
+    // v1.0 prep: carrega config remota do Gemini em paralelo com dados do usuário
+    loadRemoteGeminiConfig();
     setTimeout(() => {
       if(typeof downloadFromCloud === 'function') {
         downloadFromCloud().then(decide).catch(decide);
       } else {
         decide();
       }
-    }, 800); // slight delay to let Firebase load complete
+    }, 800);
   } else {
+    // Sessão anônima: tenta carregar config remota mesmo sem login
+    // (Firestore rules permitem leitura pública de config/gemini)
+    loadRemoteGeminiConfig();
     decide();
   }
 };
