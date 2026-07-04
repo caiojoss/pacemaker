@@ -1,272 +1,229 @@
-## Pacemaker — Transformando dados de corrida em decisões inteligentes.
+Pacemaker v1.0 — Documentação Oficial
 
-O Pacemaker é um aplicativo inovador de coaching de corrida impulsionado por Inteligência Artificial, projetado para personalizar seus treinos e guiá-lo rumo às suas metas. Com uma abordagem adaptativa e baseada em dados, o Pacemaker atua como seu parceiro de treino, oferecendo insights e planos que evoluem com você.
+O Pacemaker é uma plataforma completa de treinamento para corrida impulsionada por Inteligência Artificial. Projetado para transformar a maneira como corredores interagem com seus dados, o Pacemaker atua como um parceiro estratégico, oferecendo uma camada de inteligência que evolui junto com o atleta.
 
-## Filosofia
+🏃‍♂️ Filosofia: Do Dado à Evolução
 
-O Pacemaker não foi criado para substituir o Strava.
+O Pacemaker não nasceu para ser um rastreador de atividades. O mercado já possui ferramentas excelentes para registro, como o Strava. O propósito do Pacemaker começa onde o registro termina.
 
-O Strava registra atividades.
+Nossa filosofia fundamental evoluiu para refletir o ciclo completo de crescimento do atleta:
 
-O Pacemaker interpreta essas atividades.
 
-A missão do projeto é transformar:
+Dados → Contexto → Decisão → Evolução
 
-Dados → Contexto → Decisão
+Enquanto outras ferramentas focam no "o quê" (distância, tempo, pace), o Pacemaker foca no "porquê" e no "e agora?". Nós interpretamos o histórico e as tendências para ajudar o atleta a tomar decisões melhores hoje, garantindo uma evolução consistente e segura a longo prazo.
 
-permitindo que corredores amadores tenham acesso a um acompanhamento inteligente, contextual e adaptativo.
 
-## Sobre o Projeto
 
-Desenvolvido com o objetivo de democratizar o acesso a um coaching de alta qualidade, o Pacemaker integra tecnologias de ponta para oferecer uma experiência de usuário fluida e eficaz. A versão atual, v0.8.2, foca na sincronização de dados e no aprimoramento do contexto do coach, preparando o terreno para futuras expansões e uma experiência de usuário ainda mais rica.
 
-Funcionalidades Atuais (v0.8.2)
+🚀 Funcionalidades Principais
 
-A versão 0.8.2 do Pacemaker incorpora um conjunto robusto de funcionalidades, visando aprimorar a interação com o coach de IA e a persistência dos dados do usuário:
+O Pacemaker v1.0 oferece um ecossistema robusto para a gestão do treinamento:
+
+Inteligência e Contexto
 
 •
-Login Google: Autenticação simplificada e segura através da sua conta Google.
+Coach IA: Um treinador inteligente disponível 24/7 para orientar seus treinos e tirar dúvidas.
 
 •
-Multi-device: Acesso contínuo e sincronizado aos seus dados e conversas em diferentes dispositivos.
+Context Engine: O cérebro por trás do Coach, que analisa tendências de volume, fadiga e performance.
 
 •
-Integração Strava: Conecte-se ao Strava para importar seus treinos e permitir que o Coach IA analise seu desempenho real.
+Athlete Memory: Uma base de conhecimento estruturada sobre você (detalhes abaixo).
 
 •
-Coach IA: Um treinador inteligente que programa seus treinos e oferece feedback personalizado.
+Onboarding Inteligente: Processo de entrada que mapeia seu perfil, objetivos e restrições desde o primeiro dia.
+
+Gestão e Planejamento
 
 •
-Planner: Uma ferramenta visual para organizar e acompanhar seu calendário de treinos.
+Planner: Calendário visual e intuitivo para organizar sua rotina de treinos.
 
 •
-Race IQ: Análises e métricas para otimizar sua performance em corridas.
+Race IQ: Inteligência específica para preparação de provas, ajudando a definir ritmos e estratégias.
 
 •
-Firebase Sync: Sincronização de dados em tempo real e persistência offline através do Firebase Firestore.
+Dashboard: Visão consolidada do seu estado atual e progresso recente.
 
 •
-Gemini Coach: Utilização da API Gemini para potencializar as capacidades de conversação e análise do Coach IA.
+Weekly Reports: Relatórios semanais automáticos com resumos de acertos, riscos e próximos passos.
+
+Infraestrutura e Experiência
 
 •
-Cloud Sync da Gemini Key: Gerenciamento seguro e sincronizado da chave de API Gemini na nuvem.
+Importação Strava: Sincronização direta para análise imediata das suas atividades reais.
 
 •
-Coach History Sync: Persistência e sincronização do histórico de conversas com o Coach IA, garantindo contexto contínuo.
+Google Login & Multi-device: Autenticação segura e acesso sincronizado em qualquer dispositivo.
 
 •
-Context Engine v1 (Em Andamento): Uma evolução crucial para o Coach IA, permitindo a análise de tendências de longo prazo para um planejamento mais inteligente:
+Firebase Sync & Firestore: Banco de dados em tempo real com Persistência Offline garantida.
 
 •
-Tendência de volume (8 semanas)
+Desktop Experience: Interface otimizada para telas grandes, focada em análise e planejamento profundo.
 
 •
-Tendência de pace
+Coach History: Histórico completo de interações, mantendo a continuidade do diálogo em qualquer lugar.
+
+
+
+
+🧠 Muito além de um Chat de IA
+
+O Coach do Pacemaker não é um chatbot genérico. Ele é um Coach de Contexto. Diferente de IAs convencionais que respondem perguntas isoladas, o nosso Coach possui uma visão holística do atleta.
+
+Ele não apenas "responde"; ele orienta com base em:
 
 •
-Tendência de aderência ao plano
+Histórico Completo: Ele sabe o que você correu nas últimas semanas.
 
 •
-Tendência de fadiga
+Objetivos Reais: Ele entende para qual prova você está treinando.
 
 •
-Tendência de longão
+Rotina e Preferências: Ele sabe seus dias de musculação e suas limitações de horário.
 
 •
-Objetivo: O Coach IA passa a olhar a evolução do corredor, e não apenas o momento presente.
+Evolução e Memória: Ele lembra de dores relatadas anteriormente ou de metas de volume superadas.
+
+
+
+
+📁 Athlete Memory (Memória do Atleta)
+
+A Athlete Memory é o coração da personalização no Pacemaker. É uma estrutura de dados permanente que serve como a "fonte única de verdade" para a IA.
+
+Nesta seção, o Pacemaker armazena e utiliza informações como:
 
 •
-Weekly Reports (Em Andamento): Geração automática de relatórios semanais para fornecer um resumo claro do progresso, acertos, riscos e próximos passos.
-
-Arquitetura de Alto Nível (v0.8.2)
-
-O Pacemaker v0.8.2 é construído sobre uma base de tecnologias web modernas, com foco em simplicidade e desempenho para a experiência mobile:
+Objetivo Principal e Tempo Alvo: Ex: "Maratona de Porto Alegre em 3h30".
 
 •
-Frontend: HTML, CSS (com variáveis e estilos inspirados em Tailwind CSS) e JavaScript Vanilla.
+Rotina de Vida: Horários de trabalho e disponibilidade para treinar.
 
 •
-Backend/Dados: Firebase (Authentication para login, Firestore para banco de dados NoSQL em tempo real).
+Histórico de Saúde: Lesões prévias e observações físicas.
 
 •
-Inteligência Artificial: Integração com a API Gemini para o motor do Coach IA.
+Metas de Volume: O quanto você pretende rodar por semana/mês.
 
 •
-Estrutura: Atualmente, o projeto é mantido em um único arquivo HTML/JavaScript, o que facilita o desenvolvimento rápido, mas está planejado para modularização futura.
+Dados Físicos: Peso, idade e métricas de performance.
 
-## Roadmap Oficial
+Isso garante que o atleta nunca precise se explicar duas vezes. O Coach já sabe quem você é.
 
-O futuro do Pacemaker é ambicioso, com um plano claro para evoluir a plataforma e a experiência do usuário:
 
-v0.8.2 — Context & Sync (Atual)
 
-•
-Remover OpenAI: ✅ Concluído
 
-•
-Gemini Key Cloud: ✅ Concluído
+⚙️ Arquitetura e Configuração
 
-•
-Coach History Sync: 🔄 Em Andamento
+O Pacemaker foi construído para ser ágil, resiliente e escalável.
+
+Remote AI Configuration
+
+Implementamos uma arquitetura de Remote Config via Firestore. Isso permite que a inteligência do sistema seja ajustada em tempo real sem a necessidade de novos deploys. Administradores podem alterar:
 
 •
-Conversa compartilhada PC ↔ celular
+Modelo do Gemini (ex: Flash vs Pro).
 
 •
-Persistência entre dispositivos
+Parâmetros de Temperatura e Criatividade.
 
 •
-Contexto contínuo
-
-
+Chaves de API e estados do serviço.
 
 •
-Context Engine v1: 🔄 Em Andamento
+Habilitação/Desabilitação modular do Coach.
+
+Esta estrutura prepara o terreno para a futura migração completa para Cloud Functions, isolando a lógica de negócio pesada do cliente.
+
+Stack Tecnológica
 
 •
-Adicionar tendências (volume, pace, aderência, fadiga, longão)
+Frontend: Single Page Application (SPA) em HTML5, CSS3 e JavaScript Moderno.
 
 •
-Resultado: Coach deixa de olhar apenas "agora" e passa a olhar "evolução"
-
-
+Auth: Firebase Authentication.
 
 •
-Weekly Reports: 🔄 Em Andamento
+Database: Cloud Firestore com sincronização em tempo real.
 
 •
-Gerar automaticamente: Resumo da semana, Acertos, Riscos, Próximos passos
-
-
-
-v0.8.5 — React Foundation
-
-Esta versão é um passo crucial de preparação para a migração para React, focando na modularização do código JavaScript Vanilla existente para reduzir riscos e facilitar a transição.
+Offline: Persistência de dados local para uso sem conectividade.
 
 •
-Objetivo: Preparar o terreno para a migração.
+AI Engine: Google Gemini API com Context Engine proprietário.
+
+
+
+
+💎 Princípios de Produto
+
+Nossas decisões de desenvolvimento são guiadas por seis pilares fundamentais:
+
+1.
+Fonte Única de Verdade: Uma informação deve possuir apenas um local de edição.
+
+2.
+Contexto Total: O Coach sempre deve conhecer o contexto completo antes de opinar.
+
+3.
+Zero Repetição: O atleta nunca deve precisar explicar duas vezes quem ele é ou quais são seus problemas.
+
+4.
+Decisões Baseadas em Dados: Toda orientação deve ter fundamento no histórico e nas métricas coletadas.
+
+5.
+Orientação > Resposta: O objetivo da IA não é apenas responder perguntas, mas guiar o atleta ativamente.
+
+6.
+Simplicidade Poderosa: O app deve ser simples para quem está começando, mas oferecer profundidade para atletas avançados.
+
+
+
+
+🗺️ Roadmap de Evolução
+
+v0.9.x — Launch Polish
 
 •
-Fazer: Separar o HTML monolítico em módulos JavaScript Vanilla:
+Refinamento Visual: Padronização de layout e revisão de UX.
 
 •
-firebase.js
+Desktop Polish: Ajustes finais na experiência de tela larga.
 
 •
-coach.js
+Athlete Memory Integration: Coach plenamente consciente de toda a memória estruturada.
 
 •
-planner.js
+Empty States & Onboarding: Melhoria na usabilidade para novos usuários.
+
+v1.0 — Public Release (Atual)
 
 •
-raceiq.js
-
-•
-storage.js
-
-•
-ui.js
-
-
-
-•
-Benefício: Reduz significativamente o risco da migração para React, isolando a lógica de negócio da interface do usuário.
-
-v0.9.0 — Desktop Experience
-
-Expansão da experiência do Pacemaker para desktops, com interfaces otimizadas para telas maiores.
-
-•
-Desktop Dashboard: Layout com Sidebar, Dashboard principal, Coach, Planner, Race IQ e Longão.
-
-•
-Desktop Coach: O Coach IA terá uma tela própria, apresentando-se como um painel com Histórico, Tendências, Alertas e Recomendações, em vez de um chat simples.
-
-v0.9.5 — React Migration
-
-A migração incremental para uma stack React moderna, garantindo estabilidade e escalabilidade.
-
-•
-Estratégia: Migração gradual, não reescrita completa, para evitar quebras no projeto.
-
-•
-Stack: Vite, React, React Router, Context API, Zustand (para gerenciamento de estado), Firebase, TypeScript e Tailwind CSS.
-
-•
-Ordem de Migração: Dashboard, Planner, Log, Race IQ, Coach.
-
-v1.0 — Pacemaker Public Release
-
-O lançamento público do Pacemaker, com um produto completo e utilizável por qualquer corredor.
-
-•
-Objetivo: Produto utilizável por qualquer corredor.
-
-•
-Funcionalidades Incluídas:
-
-•
-✅ Login Google
-
-•
-✅ Multi-device
-
-•
-✅ Strava
-
-•
-✅ Coach IA
-
-•
-✅ Planner
-
-•
-✅ Race IQ
-
-•
-✅ Weekly Reports
-
-•
-✅ Desktop Experience
-
-•
-✅ React (migração concluída)
-
-
+Lançamento oficial da plataforma completa para corredores.
 
 v1.1 — Coach Evolution
 
-Aprimoramento contínuo do Coach IA, com foco em inteligência e personalização avançadas.
+•
+Coach Socrático: A IA passará a fazer perguntas investigativas antes de sugerir mudanças.
 
 •
-Coach Memory: Além do histórico de chat, o coach terá uma "memória" estruturada sobre o usuário (ex: lesões, metas, preferências de treino).
+Discordância Inteligente: Capacidade de negar treinos prejudiciais ou metas irrealistas com base em dados.
 
 •
-Coach Socrático: O coach fará perguntas contextuais antes de responder, aprofundando a compreensão do estado do usuário (ex: "Você dormiu bem? Como foi a recuperação?").
+Coach Memory: Expansão da capacidade de aprendizado contínuo do treinador.
+
+v2.0 — Automatic Planning
 
 •
-Discordância Inteligente: O coach será capaz de discordar de solicitações irrealistas do usuário, fornecendo justificativas baseadas em dados e segurança.
-
-v2.0 — O Sonho: Planejamento Automático e Ajuste Dinâmico
-
-A visão de longo prazo para o Pacemaker, onde o coach se torna proativo e o plano de treino se adapta em tempo real.
+Plano Adaptativo: Replanejamento automático em caso de treinos perdidos ou fadiga excessiva.
 
 •
-Planejamento Automático: O coach apresentará o treino do dia sem a necessidade de perguntas, justificando-o com base em recuperação, fadiga e metas.
-
-•
-Ajuste Dinâmico: O plano de treino se recalculará automaticamente em resposta a eventos como treinos perdidos, noites mal dormidas ou recordes pessoais (RPs).
-
-Changelog Resumido
-
-•
-v0.8.5 (Atual): feat(v0.8.5): desktop experience foundation
-•
-Versões Anteriores: Implementação inicial de Login Google, Multi-device, Integração Strava, Coach IA básico, Planner e Race IQ.
-
-Contribuição
-
-Atualmente, o projeto está em fase de desenvolvimento interno. Informações sobre como contribuir serão adicionadas em futuras versões.
+Treino Automático: Sugestões proativas diárias sem necessidade de interação prévia.
 
 
-teste
+
+
+© 2026 Pacemaker. Transformando dados de corrida em decisões inteligentes.
+
