@@ -267,5 +267,6 @@ Versões Anteriores: Implementação inicial de Login Google, Multi-device, Inte
 Contribuição
 
 Atualmente, o projeto está em fase de desenvolvimento interno. Informações sobre como contribuir serão adicionadas em futuras versões.
-]
 
+
+teste
