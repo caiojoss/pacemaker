@@ -619,10 +619,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="openModal('modal-log')">+ Treino</button>
       </div>
 
+      <div class="db-desktop-grid">
       <!-- v0.9.3 (P0): Ciclo de prova — card exibido quando a data da prova passa e
            o strategyCycle muda para COMPLETED. Ainda não gera plano novo automaticamente,
            apenas detecta o fim do ciclo e oferece os próximos passos. -->
-      <div id="db-cycle-completed-card" class="card" style="display:none;margin-bottom:12px;border-color:rgba(46,232,196,0.25);background:var(--teal-dim)">
+      <div id="db-cycle-completed-card" class="card db-col-full" style="display:none;margin-bottom:12px;border-color:rgba(46,232,196,0.25);background:var(--teal-dim)">
         <div style="font-size:28px;margin-bottom:6px">🏁</div>
         <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:var(--teal)">Parabéns pela conclusão do ciclo.</div>
         <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:14px" id="db-cycle-completed-sub">Sua prova já passou. Hora de fechar esse capítulo.</div>
@@ -633,10 +634,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
 
       <!-- Weekly Report (Fase 5) -->
-      <div id="db-weekly-report"></div>
+      <div id="db-weekly-report" class="db-col-full"></div>
 
       <!-- Hero row -->
-      <div class="grid2" id="db-hero-row" style="margin-bottom:12px">
+      <div class="grid2 db-col-full" id="db-hero-row" style="margin-bottom:12px">
         <div class="card" id="db-race-card" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
           <div class="label" id="db-race-label">Próxima prova</div>
           <div class="big-num" id="db-days" style="color:var(--accent);font-size:32px">--</div>
@@ -659,7 +660,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
       </div>
       <!-- KM stats -->
-      <div class="grid3" style="margin-bottom:12px">
+      <div class="grid3 db-col-full" style="margin-bottom:12px">
         <div class="card" style="padding:12px">
           <div class="label">Semana</div>
           <div class="med-num" id="db-week-km" style="color:var(--blue)">0</div>
@@ -677,7 +678,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
       </div>
       <!-- Execution card (planned vs actual) -->
-      <div class="card" id="db-exec-card" style="margin-bottom:12px"></div>
+      <div class="card db-col-full" id="db-exec-card" style="margin-bottom:12px"></div>
       <!-- Monthly progress -->
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
@@ -721,7 +722,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
       </div>
       <!-- Next workout -->
-      <div class="card card-accent" id="db-next-card">
+      <div class="card card-accent db-col-full" id="db-next-card">
         <div class="label">Próximo treino sugerido</div>
         <div id="db-next-title" style="font-size:15px;font-weight:700;margin-bottom:4px">–</div>
         <div id="db-next-detail" style="font-family:var(--mono);font-size:11px;color:var(--text2)">–</div>
@@ -731,11 +732,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
       </div>
       <!-- Recent workouts -->
-      <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px">
-        <div style="font-size:13px;font-weight:700">Treinos recentes</div>
-        <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="goTo('sec-log')">Ver todos</button>
+      <div class="db-col-full">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px">
+          <div style="font-size:13px;font-weight:700">Treinos recentes</div>
+          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="goTo('sec-log')">Ver todos</button>
+        </div>
+        <div id="db-recent-list"></div>
       </div>
-      <div id="db-recent-list"></div>
+      </div>
     </div>
 
     <!-- TRAINING LOG -->
@@ -981,58 +985,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           </div>
         </div>
       </div>
-      <div class="card" style="margin-bottom:16px" id="cfg-race-card">
-        <div class="label" style="margin-bottom:12px">Dados da prova</div>
-        <div class="form-group">
-          <label class="form-label">Data da prova</label>
-          <input type="date" class="form-input" id="cfg-race-date"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Nome da prova</label>
-          <input type="text" class="form-input" id="cfg-race-name" placeholder="Ex: Maratona de São Paulo"/>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar prova</button>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="label" style="margin-bottom:12px">Metas de volume</div>
-        <div class="form-group">
-          <label class="form-label">Meta mensal de km</label>
-          <input type="number" class="form-input" id="cfg-month-goal" placeholder="Ex: 150"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Meta de volume semanal (km)</label>
-          <input type="number" class="form-input" id="cfg-week-goal" placeholder="Ex: 40"/>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar configurações</button>
-      </div>
-      <div class="card" style="margin-bottom:16px" id="cfg-scale-card">
-        <div class="label" style="margin-bottom:4px" id="cfg-scale-title">Rotina de trabalho</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:12px" id="cfg-scale-current"></div>
-        <div class="form-group" id="cfg-scale-start-group" style="display:none">
-          <label class="form-label" id="cfg-scale-start-label">Data de início do ciclo</label>
-          <input type="date" class="form-input" id="cfg-scale-start"/>
-        </div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px;line-height:1.5" id="cfg-scale-desc"></div>
-        <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveConfig()">Salvar rotina</button>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="label" style="margin-bottom:12px">Dados pessoais</div>
-        <div class="form-group">
-          <label class="form-label">Nome</label>
-          <input type="text" class="form-input" id="cfg-name" name="athlete-display-name" autocomplete="name" placeholder="Seu nome"/>
-        </div>
-        <div class="grid2" style="gap:10px">
-          <div class="form-group">
-            <label class="form-label">Peso (kg)</label>
-            <input type="number" class="form-input" id="cfg-weight" placeholder="Ex: 70"/>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Altura (cm)</label>
-            <input type="number" class="form-input" id="cfg-height" placeholder="Ex: 175"/>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-full" onclick="saveConfig()">Salvar dados</button>
-      </div>
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="#FC4C02"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
@@ -1120,6 +1072,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
 
       <div class="card" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div class="label" style="margin-bottom:0">🤖 Coach IA nativo</div>
           <div id="gemini-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">inativo</div>
         </div>
         <div id="coach-ai-intro" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;line-height:1.6">
@@ -1149,17 +1103,109 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:16px">
-        <div class="label" style="margin-bottom:12px">🧠 Memória do Atleta</div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">O Coach usa essas informações para personalizar respostas e insights.</div>
+      <div class="collapsible-header" id="athlete-memory-header" onclick="toggleAthleteMemory()">
+        <span class="collapsible-title">🧠 Memória do Atleta</span>
+        <span class="collapsible-chevron">▼</span>
+      </div>
+      <div class="collapsible-body" id="athlete-memory-body">
+      <div class="collapsible-body-inner" id="athlete-memory-card">
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:16px;line-height:1.6">Local único dos seus dados. O Coach usa essas informações para personalizar respostas e insights.</div>
+
+        <!-- Dados pessoais -->
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.03em">Dados pessoais</div>
         <div class="form-group">
-          <label class="form-label">Objetivo principal</label>
-          <input type="text" class="form-input" id="cfg-ap-goal" placeholder="Definido no onboarding"/>
+          <label class="form-label">Nome</label>
+          <input type="text" class="form-input" id="cfg-name" name="athlete-display-name" autocomplete="name" placeholder="Seu nome"/>
+        </div>
+        <div class="grid2" style="gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Peso (kg)</label>
+            <input type="number" class="form-input" id="cfg-weight" placeholder="Ex: 70"/>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Altura (cm)</label>
+            <input type="number" class="form-input" id="cfg-height" placeholder="Ex: 175"/>
+          </div>
+        </div>
+
+        <!-- Objetivo -->
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin:18px 0 10px;text-transform:uppercase;letter-spacing:0.03em;border-top:0.5px solid var(--border);padding-top:16px">Objetivo</div>
+        <div class="form-group">
+          <label class="form-label">Tipo de objetivo</label>
+          <select class="form-select" id="cfg-goal-type" onchange="updateRaceBlockVisibility()">
+            <option value="health">Saúde e Condicionamento</option>
+            <option value="5k">5 km</option>
+            <option value="10k">10 km</option>
+            <option value="half">Meia Maratona</option>
+            <option value="marathon">Maratona</option>
+          </select>
         </div>
         <div class="form-group">
+          <label class="form-label">Objetivo principal (detalhe)</label>
+          <input type="text" class="form-input" id="cfg-ap-goal" placeholder="Ex: sub 4h na maratona"/>
+        </div>
+        <div class="form-group" style="margin-bottom:14px">
           <label class="form-label">Tempo alvo</label>
           <input type="text" class="form-input" id="cfg-ap-target-time" placeholder="Não definido"/>
         </div>
+
+        <!-- Dados da prova — oculto automaticamente quando o objetivo não exige prova (ex: Saúde e Condicionamento) -->
+        <div id="cfg-race-block">
+          <div class="form-group">
+            <label class="form-label">Nome da prova</label>
+            <input type="text" class="form-input" id="cfg-race-name" placeholder="Ex: Maratona de São Paulo"/>
+          </div>
+          <div class="form-group" style="margin-bottom:14px">
+            <label class="form-label">Data da prova</label>
+            <input type="date" class="form-input" id="cfg-race-date"/>
+          </div>
+        </div>
+
+        <!-- Rotina de trabalho -->
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin:18px 0 10px;text-transform:uppercase;letter-spacing:0.03em;border-top:0.5px solid var(--border);padding-top:16px">Rotina de trabalho</div>
+        <div class="form-group">
+          <label class="form-label">Escala</label>
+          <select class="form-select" id="cfg-scale-select" onchange="updateScaleFieldsVisibility()">
+            <option value="5x2">5x2 (Segunda a Sexta)</option>
+            <option value="6x1">6x1</option>
+            <option value="2x2">2x2</option>
+            <option value="12x36">12x36</option>
+            <option value="custom">Personalizada</option>
+          </select>
+        </div>
+        <div class="form-group" id="cfg-scale-start-group" style="display:none">
+          <label class="form-label" id="cfg-scale-start-label">Data de início do ciclo</label>
+          <input type="date" class="form-input" id="cfg-scale-start"/>
+        </div>
+        <div class="form-group" id="cfg-custom-days-group" style="display:none">
+          <label class="form-label">Quais dias você trabalha?</label>
+          <div class="ob-chips" id="cfg-custom-days-chips">
+            <div class="ob-chip" data-val="1" onclick="toggleCfgCustomDay(this)">Seg</div>
+            <div class="ob-chip" data-val="2" onclick="toggleCfgCustomDay(this)">Ter</div>
+            <div class="ob-chip" data-val="3" onclick="toggleCfgCustomDay(this)">Qua</div>
+            <div class="ob-chip" data-val="4" onclick="toggleCfgCustomDay(this)">Qui</div>
+            <div class="ob-chip" data-val="5" onclick="toggleCfgCustomDay(this)">Sex</div>
+            <div class="ob-chip" data-val="6" onclick="toggleCfgCustomDay(this)">Sáb</div>
+            <div class="ob-chip" data-val="0" onclick="toggleCfgCustomDay(this)">Dom</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.5" id="cfg-scale-desc"></div>
+
+        <!-- Metas de volume -->
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin:18px 0 10px;text-transform:uppercase;letter-spacing:0.03em;border-top:0.5px solid var(--border);padding-top:16px">Metas de volume</div>
+        <div class="grid2" style="gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Meta semanal (km)</label>
+            <input type="number" class="form-input" id="cfg-week-goal" placeholder="Ex: 40"/>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Meta mensal (km)</label>
+            <input type="number" class="form-input" id="cfg-month-goal" placeholder="Ex: 150"/>
+          </div>
+        </div>
+
+        <!-- Perfil esportivo -->
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin:18px 0 10px;text-transform:uppercase;letter-spacing:0.03em;border-top:0.5px solid var(--border);padding-top:16px">Perfil esportivo</div>
         <div class="form-group">
           <label class="form-label">Treina musculação?</label>
           <select class="form-select" id="cfg-ap-strength-pref">
@@ -1183,8 +1229,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <label class="form-label">Observações para o Coach</label>
           <textarea class="form-textarea" id="cfg-ap-notes" rows="2" placeholder="Nenhuma observação"></textarea>
         </div>
-        <button class="btn btn-primary btn-full" onclick="saveAthleteProfile()">Salvar memória do atleta</button>
+        <button class="btn btn-primary btn-full" onclick="saveAthleteMemory()">Salvar memória do atleta</button>
       </div>
+      </div>
+      <div style="margin-bottom:16px"></div>
       <div class="card">
         <div class="label" style="margin-bottom:10px">Dados do app</div>
         <button class="btn btn-danger btn-full" onclick="if(confirm('Apagar todos os treinos? Isso não pode ser desfeito.'))clearData()">Limpar todos os treinos</button>
@@ -3302,7 +3350,25 @@ ${isHealthGoal ? '' : '- Se dias para a prova <= 14: enforça taper independente
 - Justifique cada recomendação com dados reais do histórico
 - Dê números exatos: distância, pace, FC, séries, recuperação
 - Máximo 4 parágrafos por resposta
-- Considere sempre a rotina de trabalho do atleta (${scaleDesc}) ao sugerir treinos`;
+- Considere sempre a rotina de trabalho do atleta (${scaleDesc}) ao sugerir treinos
+
+CONHECIMENTO SOBRE O APP PACEMAKER (v1.0):
+Você também é o especialista no próprio aplicativo. Quando o atleta perguntar "como faço X" ou "o que é Y",
+responda com o caminho exato de menu ou a explicação abaixo — sem rodeios, sem mandar "procurar nas configurações"
+de forma vaga.
+- Objetivo principal, tipo de objetivo, tempo alvo, peso, altura, nome, rotina de trabalho, metas de volume,
+  dados da prova, musculação e histórico de lesões: TUDO fica em "Configurações → Memória do Atleta" — é o único
+  lugar do app onde esses dados são editados.
+- Trocar objetivo (ex: de Saúde para Meia Maratona): Configurações → Memória do Atleta → Tipo de objetivo.
+  O bloco "Dados da prova" aparece/some automaticamente conforme esse campo.
+- Sincronizar Strava: Configurações → seção Strava · Importação automática.
+- Conta e sincronização entre dispositivos: Configurações → Conta e sincronização (login Google).
+- Planner: tela onde o atleta monta e visualiza o treino da semana/próxima semana, com calendário e distribuição de km.
+- Race IQ: tela com previsão de tempo de prova, prontidão para a distância-alvo e histórico de longões — mostra se o atleta está pronto para o objetivo.
+- Weekly Reports: relatório automático da semana anterior (km, aderência, fadiga, comparação com a meta).
+- Dashboard: visão geral — km da semana/mês/total, prontidão, execução planejado vs. realizado, contagem regressiva para a prova.
+- Histórico: lista de todos os treinos registrados, editável.
+Se o atleta perguntar algo sobre o app que não está descrito aqui, seja honesto e diga que não tem certeza, em vez de inventar um caminho de menu.`;
 }
 
 // ==================== SEND TO GEMINI ====================
@@ -4577,6 +4643,24 @@ async function sendMock(text) {
 }
 
 const mockResponses = [
+  { keys:['como altero meu objetivo','mudar objetivo','trocar objetivo','como alterar objetivo'],
+    reply(){ return `Configurações → Memória do Atleta → Tipo de objetivo. O bloco "Dados da prova" aparece ou some automaticamente conforme você muda esse campo.`; }},
+  { keys:['como altero meu peso','mudar peso','alterar peso','como altero minha altura','alterar altura'],
+    reply(){ return `Configurações → Memória do Atleta — peso e altura ficam logo no topo, em "Dados pessoais".`; }},
+  { keys:['data da prova','nome da prova','alterar prova','mudar prova'],
+    reply(){ return `Configurações → Memória do Atleta → Dados da prova.`; }},
+  { keys:['rotina de trabalho','minha escala','mudar escala','2x2','5x2','6x1','12x36'],
+    reply(){ return `Configurações → Memória do Atleta → Rotina de trabalho. Dá pra trocar a escala (5x2, 6x1, 2x2, 12x36 ou personalizada) a qualquer momento.`; }},
+  { keys:['volume semanal','meta semanal','meta mensal','alterar volume'],
+    reply(){ return `Configurações → Memória do Atleta → Metas de volume.`; }},
+  { keys:['sincronizar strava','conectar strava','strava'],
+    reply(){ return `Configurações → seção Strava · Importação automática. Você vai precisar de um Client ID gerado em strava.com/settings/api.`; }},
+  { keys:['o que é o race iq','o que e o race iq','pra que serve o race iq'],
+    reply(){ return `Race IQ mostra sua previsão de tempo de prova, sua prontidão para a distância-alvo e o histórico de longões — é onde você vê se está de fato pronto para o objetivo.`; }},
+  { keys:['o que é o weekly report','o que e o weekly report','relatório semanal'],
+    reply(){ return `Weekly Report é o resumo automático da semana anterior: km total, aderência ao planejado, fadiga média e comparação com a meta.`; }},
+  { keys:['o que é o planner','o que e o planner','pra que serve o planner'],
+    reply(){ return `Planner é onde você monta e visualiza o treino da semana (ou da próxima semana), com calendário e distribuição de km por dia.`; }},
   { keys:['z2','base aeróbica','aerobico','aeróbico'],
     reply(c){ return `Z2 é a base de tudo. Com ${c.wkm}km esta semana e prontidão ${c.rs}/100, o Z2 certo está em FC <140bpm — se não consegue falar frases completas, está rápido demais. No seu caso com ${c.days} dias para a prova, 70–80% do volume deve ser Z2.`; }},
   { keys:['joelho','lesão','lesao','dor','articular'],
@@ -4631,37 +4715,84 @@ function getMockReply(text) {
 function quickMsg(text) { document.getElementById('chat-input').value=text; sendCoach(); }
 
 // ==================== SETTINGS ====================
+// v1.0: Memória do Atleta é o único local de edição destes dados (single source
+// of truth). Nada disso aparece mais em Dashboard/Planner/Weekly Reports.
+const SCALE_LABELS = { '5x2':'5x2 (Segunda a Sexta)', '6x1':'6x1', '2x2':'2x2', '12x36':'12x36', 'custom':'Personalizada' };
+
+// v1.0: card retrátil — fechado por padrão, para não ocupar a tela logo de cara.
+function toggleAthleteMemory() {
+  const header = document.getElementById('athlete-memory-header');
+  const body   = document.getElementById('athlete-memory-body');
+  if(!header || !body) return;
+  const opening = !header.classList.contains('open');
+  header.classList.toggle('open');
+  body.classList.toggle('open');
+  body.style.maxHeight = opening ? body.scrollHeight + 'px' : '0';
+}
+
+// Conteúdo do card muda de altura (bloco de prova / dias customizados aparecendo
+// e sumindo) — se o card estiver aberto, recalcula o max-height para não cortar.
+function refreshAthleteMemoryHeight() {
+  const body = document.getElementById('athlete-memory-body');
+  if(body && body.classList.contains('open')) {
+    body.style.maxHeight = body.scrollHeight + 'px';
+  }
+}
+
+function toggleCfgCustomDay(el) {
+  el.classList.toggle('sel');
+  refreshAthleteMemoryHeight();
+}
+
+function updateScaleFieldsVisibility() {
+  const val = document.getElementById('cfg-scale-select')?.value;
+  const scaleStartGroup = document.getElementById('cfg-scale-start-group');
+  const customDaysGroup = document.getElementById('cfg-custom-days-group');
+  const scaleDescEl = document.getElementById('cfg-scale-desc');
+  const needsRotationDate = ['2x2','12x36'].includes(val);
+  const isCustom = val === 'custom';
+  if(scaleStartGroup) scaleStartGroup.style.display = needsRotationDate ? '' : 'none';
+  if(customDaysGroup) customDaysGroup.style.display = isCustom ? '' : 'none';
+  if(scaleDescEl) {
+    scaleDescEl.textContent = needsRotationDate
+      ? `O app calcula automaticamente seus dias de trabalho e folga com base na escala ${val}.`
+      : (isCustom ? 'Marque abaixo os dias em que você trabalha.' : '');
+  }
+  refreshAthleteMemoryHeight();
+}
+
+function updateRaceBlockVisibility() {
+  // v1.0: o bloco "Dados da prova" some sozinho quando o objetivo não exige prova
+  // (ex: Saúde e Condicionamento), e reaparece assim que o usuário troca o tipo
+  // de objetivo aqui — sem precisar refazer o onboarding.
+  const raceBlock = document.getElementById('cfg-race-block');
+  const goalTypeVal = document.getElementById('cfg-goal-type')?.value ?? state.config.goalType;
+  const needsRace = goalTypeVal !== 'health';
+  if(raceBlock) raceBlock.style.display = needsRace ? '' : 'none';
+  refreshAthleteMemoryHeight();
+}
+
 function loadConfig() {
   const c = state.config;
   document.getElementById('cfg-race-date').value = c.raceDate||'';
   document.getElementById('cfg-race-name').value = c.raceName||'';
   document.getElementById('cfg-month-goal').value = c.monthGoal || '';
   document.getElementById('cfg-week-goal').value = c.weekGoal || '';
+  document.getElementById('cfg-scale-select').value = c.workSchedule || '5x2';
   document.getElementById('cfg-scale-start').value = c.scaleStart||'';
+  document.getElementById('cfg-goal-type').value = c.goalType || 'marathon';
   document.getElementById('cfg-name').value = c.name||'';
   document.getElementById('cfg-weight').value = c.weight||'';
   document.getElementById('cfg-height').value = c.height||'';
 
-  // v0.9.1: oculta o card de prova quando objetivo é "saúde e condicionamento"
-  const raceCard = document.getElementById('cfg-race-card');
-  if(raceCard) raceCard.style.display = (c.goalType === 'health') ? 'none' : '';
+  // v1.0: pré-seleciona os dias de trabalho personalizados salvos
+  const savedCustomDays = (c.customWorkDays||[]).map(String);
+  document.querySelectorAll('#cfg-custom-days-chips .ob-chip').forEach(chip => {
+    chip.classList.toggle('sel', savedCustomDays.includes(chip.dataset.val));
+  });
 
-  // v0.9.1: rotina de trabalho dinâmica — sem mais "2x2" hardcoded
-  const scaleLabels = {
-    '5x2': '5x2 (Segunda a Sexta)', '6x1': '6x1', '2x2': '2x2',
-    '12x36': '12x36', 'custom': 'Personalizada'
-  };
-  const scaleTitleEl = document.getElementById('cfg-scale-current');
-  const scaleStartGroup = document.getElementById('cfg-scale-start-group');
-  const scaleDescEl = document.getElementById('cfg-scale-desc');
-  const needsRotationDate = ['2x2','12x36'].includes(c.workSchedule);
-  if(scaleTitleEl) scaleTitleEl.textContent = `Atual: ${scaleLabels[c.workSchedule] || 'Não definida'}`;
-  if(scaleStartGroup) scaleStartGroup.style.display = needsRotationDate ? '' : 'none';
-  if(scaleDescEl) {
-    scaleDescEl.textContent = needsRotationDate
-      ? `O app calcula automaticamente seus dias de trabalho e folga com base na escala ${c.workSchedule}.`
-      : '';
-  }
+  updateRaceBlockVisibility();
+  updateScaleFieldsVisibility();
 
   // v0.9.0: mostra botão de restaurar se existe backup de teste pendente
   const restoreBtn = document.getElementById('btn-restore-test');
@@ -4688,11 +4819,32 @@ function loadConfig() {
   if(apNotes) apNotes.value = p.notes||'';
 }
 
-function saveAthleteProfile() {
-  // v0.9.3 (P0): "off" no dropdown significa doesStrength=false, strengthPref=null.
-  // Qualquer outro valor significa doesStrength=true com aquela divisão específica.
+// v1.0: substitui saveConfig()+saveAthleteProfile() por um único botão/função
+// no card Memória do Atleta. Faz MERGE em state.config (nunca substitui o
+// objeto inteiro), preservando dados que não estão neste formulário.
+function saveAthleteMemory() {
   const strengthVal = document.getElementById('cfg-ap-strength-pref')?.value || 'ABC';
   const doesStrength = strengthVal !== 'off';
+  const scaleVal = document.getElementById('cfg-scale-select').value;
+  const customWorkDays = scaleVal === 'custom'
+    ? Array.from(document.querySelectorAll('#cfg-custom-days-chips .ob-chip.sel')).map(c=>c.dataset.val)
+    : [];
+
+  state.config = {
+    ...state.config,
+    goalType:   document.getElementById('cfg-goal-type').value,
+    raceDate:   document.getElementById('cfg-race-date').value,
+    raceName:   document.getElementById('cfg-race-name').value || 'Maratona',
+    monthGoal:  parseInt(document.getElementById('cfg-month-goal').value) || 190,
+    weekGoal:   parseInt(document.getElementById('cfg-week-goal').value) || 52,
+    workSchedule: scaleVal,
+    scaleStart: document.getElementById('cfg-scale-start').value,
+    customWorkDays,
+    name:       document.getElementById('cfg-name').value || 'Atleta',
+    weight:     parseInt(document.getElementById('cfg-weight').value) || 110,
+    height:     parseInt(document.getElementById('cfg-height').value) || 175,
+  };
+
   state.athleteProfile = {
     goal:          document.getElementById('cfg-ap-goal')?.value||'',
     targetTime:    document.getElementById('cfg-ap-target-time')?.value||'',
@@ -4703,22 +4855,11 @@ function saveAthleteProfile() {
     notes:         document.getElementById('cfg-ap-notes')?.value||'',
     updatedAt:     today()
   };
-  save();
-  showToast('Memória do atleta salva!');
-}
 
-function saveConfig() {
-  state.config = {
-    raceDate: document.getElementById('cfg-race-date').value,
-    raceName: document.getElementById('cfg-race-name').value||'Maratona',
-    monthGoal: parseInt(document.getElementById('cfg-month-goal').value)||190,
-    weekGoal: parseInt(document.getElementById('cfg-week-goal').value)||52,
-    scaleStart: document.getElementById('cfg-scale-start').value,
-    name: document.getElementById('cfg-name').value||'Atleta',
-    weight: parseInt(document.getElementById('cfg-weight').value)||110,
-    height: parseInt(document.getElementById('cfg-height').value)||175,
-  };
-  save(); showToast('Configurações salvas!');
+  save();
+  updateRaceBlockVisibility();
+  updateScaleFieldsVisibility();
+  showToast('Memória do atleta salva!');
   renderDashboard();
 }
 
