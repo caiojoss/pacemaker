@@ -1,0 +1,21 @@
+{
+  "name": "pacemaker",
+  "version": "0.9.0",
+  "description": "Training Intelligence for Runners",
+  "type": "module",
+  "scripts": {
+    "dev": "npx http-server -p 3000",
+    "build": "echo 'Static site - no build needed'",
+    "lint": "echo 'No linter configured'"
+  },
+  "keywords": [
+    "running",
+    "training",
+    "fitness"
+  ],
+  "author": "caiojoss",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/speed-insights": "^2.0.0"
+  }
+}
