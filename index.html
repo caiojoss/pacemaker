@@ -83,6 +83,13 @@ window._fbSetDoc  = setDoc;
 window._fbGetDoc  = getDoc;
 window._fbGoogleProvider = new GoogleAuthProvider();
 
+// ── authReady: resolve na primeira vez que onAuthStateChanged dispara,
+// independente do resultado ser user ou null. Usado apenas para adiar o
+// processamento do callback OAuth do Strava — NUNCA para adiar o load()
+// ou o primeiro renderDashboard() do app (ver bloco INIT no rodapé).
+let _resolveAuthReady;
+window.authReady = new Promise(resolve => { _resolveAuthReady = resolve; });
+
 // ── Auth state listener ──
 onAuthStateChanged(fbAuth, user => {
   if(user) {
@@ -102,6 +109,10 @@ onAuthStateChanged(fbAuth, user => {
   if(typeof window._pmCheckOnboardingAfterAuth === 'function') {
     window._pmCheckOnboardingAfterAuth();
   }
+  // v1.0 fix: resolve authReady na PRIMEIRA execução deste listener (login,
+  // logout ou sessão anônima confirmada). Chamadas subsequentes (ex: refresh
+  // de token) não fazem nada — _resolveAuthReady já foi zerado.
+  if(_resolveAuthReady) { _resolveAuthReady(); _resolveAuthReady = null; }
 });
 </script>
 <style>
@@ -1645,6 +1656,28 @@ function getDbKey() {
 function getStravaKey()  { return state.user?.uid ? `pacemaker_strava_${state.user.uid}`        : 'pacemaker_strava';        }
 function getStravaCidKey(){ return state.user?.uid ? `pacemaker_strava_cid_${state.user.uid}`    : 'pacemaker_strava_cid';    }
 function getStravaSecKey(){ return state.user?.uid ? `pacemaker_strava_secret_${state.user.uid}` : 'pacemaker_strava_secret'; }
+
+// v1.0 fix: migração automática de tokens Strava gravados sob a chave
+// anônima ('pacemaker_strava') — resquício de execuções antigas da race
+// condition, ou de conexões feitas antes do login — para a chave escopada
+// por uid, assim que sabemos quem é o usuário (após authReady). Roda uma
+// vez por sessão, dentro de initStravaFlow(). Só mexe nos tokens de acesso;
+// não toca Client ID nem Secret.
+function migrateLegacyStravaTokens() {
+  const uid = state.user?.uid;
+  if(!uid) return; // sessão anônima — nada a migrar ainda
+  const uidKey = `pacemaker_strava_${uid}`;
+  if(localStorage.getItem(uidKey)) return; // já existe cópia escopada — não sobrescreve
+  const legacyRaw = localStorage.getItem('pacemaker_strava');
+  if(!legacyRaw) return;
+  try {
+    JSON.parse(legacyRaw); // valida antes de copiar
+    localStorage.setItem(uidKey, legacyRaw);
+    console.info('[PM:Strava] Tokens migrados de pacemaker_strava para ' + uidKey);
+  } catch(e) {
+    console.warn('[PM:Strava] Falha ao migrar tokens legados do Strava:', e.message);
+  }
+}
 let state = {
   updatedAt: null, // v0.9.2.2 (P0): timestamp da última alteração local — usado para evitar que dados antigos da nuvem sobrescrevam dados locais mais recentes
   config: { raceDate:'', raceName:'Maratona', monthGoal:0, weekGoal:0, scaleStart:'', name:'', weight:0, height:0, goalType:'', workSchedule:'', customWorkDays:[] },
@@ -6349,15 +6382,35 @@ function applyDashboardDesktopGrid() {
 // v0.8.2 migration: remove legacy OpenAI key if present
 localStorage.removeItem('pacemaker_oai_key');
 load();
+renderDashboard();
 
-if (typeof handleStravaCallback === 'function') {
-  handleStravaCallback().then(()=>{
+// v1.0 fix: fluxo do Strava roda em paralelo, SEM atrasar o boot do app.
+// load()/renderDashboard() acima já pintaram a tela normalmente. Aqui só
+// tratamos o caso de retorno do OAuth do Strava (?code= na URL), que precisa
+// esperar authReady para gravar/ler o token na chave correta (uid-scoped) —
+// elimina a race condition em que o Strava conectava e, segundos depois,
+// a UI voltava para "Conectar com Strava".
+(async function initStravaFlow() {
+  if(typeof handleStravaCallback !== 'function') return;
+
+  if(window.authReady) {
+    await Promise.race([
+      window.authReady,
+      new Promise(resolve => setTimeout(resolve, 5000)) // timeout de segurança
+    ]);
+  }
+
+  migrateLegacyStravaTokens();
+
+  try {
+    await handleStravaCallback();
+  } finally {
+    // Só redesenha se algo relevante do Strava mudou (conexão via OAuth ou
+    // migração de tokens legados) — renderDashboard() já rodou uma vez acima.
     renderDashboard();
     if(typeof updateStravaBadge === 'function') updateStravaBadge();
-  }).catch(()=>{ renderDashboard(); });
-} else {
-  renderDashboard();
-}
+  }
+})();
 
 // v0.8.5: init desktop sidebar + right panel
 initDesktopUI();
