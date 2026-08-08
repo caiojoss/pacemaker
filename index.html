@@ -5080,44 +5080,27 @@ async function handleStravaCallback() {
   // Clean URL immediately
   window.history.replaceState({}, document.title, window.location.pathname);
 
-  const clientId = localStorage.getItem(getStravaCidKey());
-  if(!clientId) { showToast('Client ID não encontrado. Configure novamente.'); return; }
-
+  // v1.0 (Commit 2): a troca de código por token agora passa pelo backend
+  // (/api/strava/token), que já conhece client_id/client_secret via
+  // process.env — o frontend não precisa mais deles pra nada aqui. Isso
+  // elimina o prompt() que pedia o Client Secret ao usuário.
   showToast('Trocando código por token...');
-
-  // NOTE: Token exchange normally requires client_secret on a backend
-  // to protect it. For a local/PWA HTML app we show the user what to do.
-  // We'll use a PKCE-free approach: show the user instructions if no secret saved,
-  // or attempt exchange if they've provided the secret.
-  const clientSecret = localStorage.getItem(getStravaSecKey());
-  if(!clientSecret) {
-    // Prompt user to enter secret once (only needed for initial exchange)
-    const secret = prompt(
-      'Último passo!\n\nCole seu Strava Client Secret abaixo.\nEncontre em strava.com/settings/api\n(Será salvo só no seu dispositivo)'
-    );
-    if(!secret) { showToast('Cancelado. Tente novamente.'); return; }
-    localStorage.setItem(getStravaSecKey(), secret);
-    await exchangeStravaCode(clientId, secret, code);
-  } else {
-    await exchangeStravaCode(clientId, clientSecret, code);
-  }
+  await exchangeStravaCode(code);
 }
 
-async function exchangeStravaCode(clientId, clientSecret, code) {
+async function exchangeStravaCode(code) {
   try {
     showToast('Conectando ao Strava...');
-    const res = await fetch('https://www.strava.com/oauth/token', {
+    const res = await fetch('/api/strava/token', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code: code,
-        grant_type: 'authorization_code'
-      })
+      body: JSON.stringify({ code })
     });
-    const data = await res.json();
-    if(data.access_token) {
+    const data = await res.json().catch(() => null);
+
+    // Validação da resposta ANTES de salvar qualquer coisa: precisa ser 2xx
+    // e trazer um access_token utilizável. Nunca confiamos cegamente no corpo.
+    if(res.ok && data && typeof data.access_token === 'string' && data.access_token) {
       setStravaTokens({
         access_token: data.access_token,
         refresh_token: data.refresh_token,
@@ -5127,7 +5110,7 @@ async function exchangeStravaCode(clientId, clientSecret, code) {
       });
       // Sync safe Strava metadata to state so it travels to other devices via Firestore
       state.stravaConfig = {
-        clientId:  clientId,
+        clientId:  localStorage.getItem(getStravaCidKey()) || '',
         connected: true,
         athlete: {
           id:        data.athlete?.id || '',
@@ -5141,13 +5124,14 @@ async function exchangeStravaCode(clientId, clientSecret, code) {
       showToast(`✓ Strava conectado! Olá, ${data.athlete?.firstname||'atleta'}!`);
       goTo('sec-settings');
     } else {
-      console.error('Strava token error:', data);
-      showToast('Erro: ' + (data.message||'Verifique Client ID e Secret'));
-      localStorage.removeItem(getStravaSecKey());
+      // Nunca logamos o corpo inteiro (poderia, em tese, ecoar algo sensível
+      // vindo de uma resposta inesperada) — só a mensagem de erro, se houver.
+      console.error('Strava token error:', data?.message || `HTTP ${res.status}`);
+      showToast('Erro: ' + (data?.message || 'Não foi possível conectar ao Strava.'));
     }
   } catch(e) {
     showToast('Erro de conexão com Strava');
-    console.error(e);
+    console.error('Strava exchange failed:', e.message);
   }
 }
 
@@ -5155,20 +5139,19 @@ async function refreshStravaToken() {
   const t = getStravaTokens();
   if(!t) return null;
   if(Date.now()/1000 < t.expires_at - 300) return t.access_token; // Still valid
-  const clientId = localStorage.getItem(getStravaCidKey());
-  const clientSecret = localStorage.getItem(getStravaSecKey());
   try {
-    const res = await fetch('https://www.strava.com/oauth/token', {
+    const res = await fetch('/api/strava/token', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({client_id:clientId,client_secret:clientSecret,refresh_token:t.refresh_token,grant_type:'refresh_token'})
+      body: JSON.stringify({ refresh_token: t.refresh_token })
     });
-    const data = await res.json();
-    if(data.access_token) {
+    const data = await res.json().catch(() => null);
+    if(res.ok && data && typeof data.access_token === 'string' && data.access_token) {
       const updated = {...t, access_token:data.access_token, refresh_token:data.refresh_token, expires_at:data.expires_at};
       setStravaTokens(updated);
       return data.access_token;
     }
-  } catch(e) { console.error('Token refresh failed',e); }
+    console.error('Strava refresh error:', data?.message || `HTTP ${res.status}`);
+  } catch(e) { console.error('Token refresh failed:', e.message); }
   return t.access_token;
 }
 
