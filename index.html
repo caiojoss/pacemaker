@@ -101,11 +101,29 @@ window._fbGoogleProvider = new GoogleAuthProvider();
 // <head> (antes deste módulo, que é deferred). Aqui só resolvemos a Promise
 // via window._resolveAuthReady na primeira execução deste listener.
 onAuthStateChanged(fbAuth, user => {
-  if(user) {
-    state.user = { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL };
-  } else {
-    state.user = null;
+  const resolvedUser = user
+    ? { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL }
+    : null;
+  state.user = resolvedUser;
+
+  // v1.0 fix (Achado 1 da auditoria): load() roda no boot, no script clássico,
+  // ANTES deste módulo (deferred) resolver a identidade — então sempre lia
+  // 'pacemaker_v2' (chave legada/anônima) em vez de 'pacemaker_<uid>', mesmo
+  // para um usuário já logado. Agora que o uid é conhecido, chamamos load()
+  // de novo (ela é idempotente — merge raso guardado por checagens de campo
+  // ausente) para reler a chave correta a partir do localStorage, funcionando
+  // inclusive offline (a sessão do Firebase é restaurada do IndexedDB local,
+  // sem precisar de rede). Não alteramos load() em si, só o momento da chamada.
+  if(resolvedUser) {
+    load();
+    // load() faz `state = {...state, ...JSON.parse(raw)}` — um merge raso.
+    // O snapshot salvo localmente também contém seu próprio campo `user`
+    // (de quando foi salvo), que pode estar com displayName/photoURL
+    // desatualizados. Re-fixamos aqui para garantir que state.user reflita
+    // sempre a identidade mais recente vinda do próprio Firebase Auth.
+    state.user = resolvedUser;
   }
+
   if(typeof renderAuthCard === 'function') renderAuthCard();
   if(typeof renderSyncIndicator === 'function') renderSyncIndicator();
   if(typeof updateGeminiBadge === 'function') updateGeminiBadge(); // v0.9.2.1: nativo depende do login
@@ -6808,6 +6826,9 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
 
   <div class="ob-footer">
     <button class="ob-btn-primary" id="ob-btn-next" onclick="obNext()">Começar →</button>
+    <!-- v1.0: opção secundária, visível só no Step 0 (controlado em renderObStep) —
+         permite pular o wizard inteiro fazendo login numa conta que já existe. -->
+    <button class="ob-btn-back" id="ob-btn-login-existing" onclick="obLoginExisting()">Já tenho uma conta → Fazer login</button>
     <button class="ob-btn-back" id="ob-btn-back" style="display:none" onclick="obBack()">← Voltar</button>
     <div class="ob-step-counter" id="ob-step-counter"></div>
   </div>
@@ -6865,6 +6886,68 @@ function hideOnboarding() {
   document.getElementById('screen-onboarding').classList.add('hidden');
 }
 
+// ── v1.0: "Já tenho uma conta → Fazer login" (Step 0) ──────────────────────
+// Objetivo: permitir que um usuário retornando (2º dispositivo) pule o wizard
+// inteiro fazendo login ANTES de qualquer dado de onboarding ser gerado.
+// Isso é o que garante segurança contra sobrescrita: como nenhum campo de
+// state.config/athleteProfile/workouts é tocado antes disso, state.updatedAt
+// continua null, então downloadFromCloud() nunca vai achar que "o local é
+// mais novo" — a conta na nuvem sempre vence a comparação de timestamp.
+//
+// Reaproveita firebaseLogin() e o MESMO pipeline de reconciliação que
+// onAuthStateChanged já dispara (via window._authReconcilePromise) — não
+// chama downloadFromCloud() por conta própria, evitando uma segunda leitura
+// concorrente do Firestore.
+async function obLoginExisting() {
+  const btn = document.getElementById('ob-btn-login-existing');
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ Entrando...'; }
+
+  await firebaseLogin(); // dispara o popup do Google; erros são tratados e exibidos
+                          // internamente por firebaseLogin() (toast), sem rejeitar a Promise
+
+  // Pequena espera pela propagação assíncrona do onAuthStateChanged, que o
+  // próprio Firebase dispara logo após o popup resolver. Timeout de segurança
+  // cobre login cancelado/falho (firebaseLogin() não rejeita nesse caso).
+  const loggedIn = await new Promise(resolve => {
+    const start = Date.now();
+    (function poll() {
+      if(state.user) return resolve(true);
+      if(Date.now() - start > 4000) return resolve(false);
+      setTimeout(poll, 100);
+    })();
+  });
+
+  if(!loggedIn) {
+    if(btn) { btn.disabled = false; btn.textContent = 'Já tenho uma conta → Fazer login'; }
+    return; // firebaseLogin() já mostrou o toast de erro/cancelamento
+  }
+
+  // Aguarda o MESMO pipeline (downloadFromCloud + decide) que o listener de
+  // auth já disparou para este login — nenhuma segunda chamada é feita aqui.
+  if(window._authReconcilePromise) await window._authReconcilePromise;
+
+  const hasExistingAccount = state.onboardingDone || (state.workouts && state.workouts.length > 0);
+
+  if(hasExistingAccount) {
+    // Conta real encontrada com dados sincronizados — pula o onboarding
+    // por completo. downloadFromCloud() (parte do pipeline já aguardado)
+    // já rodou renderDashboard()/renderLog()/renderPlanner() internamente.
+    hideOnboarding();
+    goTo('sec-dashboard');
+    showToast(`Bem-vindo de volta, ${state.config?.name || 'atleta'}!`);
+  } else {
+    // Login OK, mas sem conta configurada ainda (usuário genuinamente novo
+    // que preferiu logar primeiro) — segue o wizard normalmente, já autenticado.
+    if(btn) { btn.disabled = false; btn.textContent = 'Já tenho uma conta → Fazer login'; }
+    if(state.user?.displayName && !_obData.name) {
+      _obData.name = state.user.displayName.split(' ')[0];
+      const nameInput = document.getElementById('ob-name');
+      if(nameInput) nameInput.value = _obData.name;
+    }
+    showToast('Login feito! Não encontramos uma conta configurada — vamos criar seu perfil.');
+  }
+}
+
 // ── Step navigation ───────────────────────────────────────
 function renderObStep(step) {
   // Progress bar
@@ -6882,7 +6965,15 @@ function renderObStep(step) {
   // Next button label
   const nextBtn = document.getElementById('ob-btn-next');
   const backBtn = document.getElementById('ob-btn-back');
+  const loginBtn = document.getElementById('ob-btn-login-existing');
   const counter = document.getElementById('ob-step-counter');
+
+  // v1.0: "Já tenho uma conta" só faz sentido no Step 0 — nos demais passos
+  // o usuário já está no meio do wizard (ou já logado via esse mesmo botão).
+  if(loginBtn) {
+    loginBtn.style.display = step === 0 ? 'block' : 'none';
+    if(step === 0 && !loginBtn.disabled) loginBtn.textContent = 'Já tenho uma conta → Fazer login';
+  }
 
   if(step === 0) {
     nextBtn.textContent = 'Começar →';
@@ -7459,18 +7550,26 @@ window._pmCheckOnboardingAfterAuth = function() {
   if(state.user) {
     // v1.0 prep: carrega config remota do Gemini em paralelo com dados do usuário
     loadRemoteGeminiConfig();
-    setTimeout(() => {
-      if(typeof downloadFromCloud === 'function') {
-        downloadFromCloud().then(decide).catch(decide);
-      } else {
-        decide();
-      }
-    }, 800);
+    // v1.0 (onboarding login): expõe esse MESMO pipeline (downloadFromCloud + decide)
+    // como uma Promise em window._authReconcilePromise, para que obLoginExisting()
+    // (botão "Já tenho uma conta" no onboarding) possa aguardá-lo em vez de disparar
+    // uma segunda chamada concorrente a downloadFromCloud(). Nada na lógica interna
+    // (o setTimeout, o downloadFromCloud, o decide) foi alterado — só passou a ser
+    // rastreável de fora.
+    window._authReconcilePromise = new Promise(resolve => {
+      setTimeout(() => {
+        const pipeline = typeof downloadFromCloud === 'function'
+          ? downloadFromCloud().then(decide).catch(decide)
+          : Promise.resolve(decide());
+        pipeline.finally(resolve);
+      }, 800);
+    });
   } else {
     // Sessão anônima: tenta carregar config remota mesmo sem login
     // (Firestore rules permitem leitura pública de config/gemini)
     loadRemoteGeminiConfig();
     decide();
+    window._authReconcilePromise = Promise.resolve();
   }
 };
 
