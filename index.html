@@ -22,6 +22,19 @@
 <!-- Vercel Speed Insights -->
 <script defer src="/_vercel/speed-insights/script.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<!-- v1.0 fix (parte 2): window.authReady precisa existir de forma SÍNCRONA,
+     antes de qualquer outro script. O módulo do Firebase logo abaixo é
+     type="module", que o navegador trata como deferred por padrão — ele só
+     roda DEPOIS de todo o HTML ser parseado, ou seja, depois do <script>
+     clássico gigante no rodapé (INIT/initStravaFlow), que roda de forma
+     síncrona no meio do parsing. Sem este bloco aqui, window.authReady
+     ainda seria 'undefined' no momento em que initStravaFlow() o checasse,
+     fazendo o app pular o await silenciosamente e reintroduzir a mesma
+     race condition que o fix anterior tentou resolver. -->
+<script>
+  window._resolveAuthReady = null;
+  window.authReady = new Promise(resolve => { window._resolveAuthReady = resolve; });
+</script>
 <!-- Firebase SDK v10 modular via CDN -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -83,14 +96,10 @@ window._fbSetDoc  = setDoc;
 window._fbGetDoc  = getDoc;
 window._fbGoogleProvider = new GoogleAuthProvider();
 
-// ── authReady: resolve na primeira vez que onAuthStateChanged dispara,
-// independente do resultado ser user ou null. Usado apenas para adiar o
-// processamento do callback OAuth do Strava — NUNCA para adiar o load()
-// ou o primeiro renderDashboard() do app (ver bloco INIT no rodapé).
-let _resolveAuthReady;
-window.authReady = new Promise(resolve => { _resolveAuthReady = resolve; });
-
 // ── Auth state listener ──
+// authReady já foi criada de forma síncrona no <script> clássico no topo do
+// <head> (antes deste módulo, que é deferred). Aqui só resolvemos a Promise
+// via window._resolveAuthReady na primeira execução deste listener.
 onAuthStateChanged(fbAuth, user => {
   if(user) {
     state.user = { uid: user.uid, displayName: user.displayName, email: user.email, photoURL: user.photoURL };
@@ -111,8 +120,8 @@ onAuthStateChanged(fbAuth, user => {
   }
   // v1.0 fix: resolve authReady na PRIMEIRA execução deste listener (login,
   // logout ou sessão anônima confirmada). Chamadas subsequentes (ex: refresh
-  // de token) não fazem nada — _resolveAuthReady já foi zerado.
-  if(_resolveAuthReady) { _resolveAuthReady(); _resolveAuthReady = null; }
+  // de token) não fazem nada — window._resolveAuthReady já foi zerado.
+  if(window._resolveAuthReady) { window._resolveAuthReady(); window._resolveAuthReady = null; }
 });
 </script>
 <style>
@@ -6393,12 +6402,16 @@ renderDashboard();
 (async function initStravaFlow() {
   if(typeof handleStravaCallback !== 'function') return;
 
-  if(window.authReady) {
-    await Promise.race([
-      window.authReady,
-      new Promise(resolve => setTimeout(resolve, 5000)) // timeout de segurança
-    ]);
-  }
+  // window.authReady é criado de forma síncrona no <script> clássico no topo
+  // do <head> — a essa altura já deve existir sempre. Fallback defensivo caso
+  // algum bloqueador de script/extensão impeça aquele bloco de rodar: cria uma
+  // Promise já resolvida, equivalente a "não esperar nada" (comportamento
+  // antigo), em vez de travar o fluxo do Strava indefinidamente.
+  const ready = window.authReady || Promise.resolve();
+  await Promise.race([
+    ready,
+    new Promise(resolve => setTimeout(resolve, 5000)) // timeout de segurança
+  ]);
 
   migrateLegacyStravaTokens();
 
