@@ -1034,14 +1034,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <div class="card" style="margin-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="#FC4C02"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
-          <div class="label" style="margin-bottom:0">Strava · Importação automática</div>
+          <div class="label" style="margin-bottom:0">Strava</div>
           <div id="strava-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">desconectado</div>
         </div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">Conecte sua conta Strava para importar treinos automaticamente. Você precisará de um Client ID — crie grátis em <a href="https://www.strava.com/settings/api" target="_blank" style="color:#FC4C02">strava.com/settings/api ↗</a></div>
-        <div class="form-group">
-          <label class="form-label">Strava Client ID</label>
-          <input type="text" class="form-input" id="cfg-strava-id" placeholder="Ex: 12345"/>
-        </div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">Conecte sua conta Strava para sincronizar seus treinos automaticamente.</div>
         <div id="strava-status" style="display:none;margin-bottom:10px"></div>
         <div id="strava-connect-row">
           <button class="strava-btn" id="strava-connect-btn" onclick="stravaConnect()">
@@ -1056,23 +1052,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           </div>
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="strava-last-sync">Nunca sincronizado</div>
         </div>
-      </div>
-
-      <!-- v0.9.3 (P1): Strava Connect Foundation — arquitetura/placeholder para a
-           futura sincronização automática (sem CID manual). NÃO substitui o fluxo
-           acima (Client ID manual) — convive com ele até a migração completa. -->
-      <div class="card" style="margin-bottom:16px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="#FC4C02" opacity="0.6"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
-          <div class="label" style="margin-bottom:0">Strava Connect</div>
-          <div id="strava-connect-v2-badge" style="font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:20px;border:0.5px solid var(--border2);color:var(--text3);margin-left:auto">em breve</div>
-        </div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">
-          Sincronização automática, sem precisar de Client ID — só conectar sua conta Strava. Esta é a base que estamos preparando; por enquanto, use a importação manual acima.
-        </div>
-        <button class="btn btn-ghost btn-full" style="font-size:11px;opacity:0.7" onclick="stravaConnectV2Placeholder()">
-          Conectar com Strava (em breve)
-        </button>
       </div>
 
       <!-- v1.0 prep: Admin panel — visível apenas para o ADMIN_UID -->
@@ -4866,8 +4845,8 @@ function loadConfig() {
   const restoreBtn = document.getElementById('btn-restore-test');
   if(restoreBtn) restoreBtn.style.display = hasTestBackup() ? '' : 'none';
   loadGeminiKeyField();
-  const cid = localStorage.getItem(getStravaCidKey());
-  if(cid) document.getElementById('cfg-strava-id').value = cid;
+  // v1.0 (Commit 3): #cfg-strava-id foi removido da UI — Client ID agora é
+  // fixo (STRAVA_CLIENT_ID_PUBLIC), nada a popular aqui.
   updateStravaBadge();
   // Athlete profile fields
   const p = state.athleteProfile||{};
@@ -4988,6 +4967,12 @@ function hasTestBackup() {
 // ==================== STRAVA OAUTH ====================
 const STRAVA_KEY = 'pacemaker_strava';
 const STRAVA_SCOPE = 'activity:read_all';
+// v1.0 (Commit 3): Client ID não é segredo — aparece publicamente na própria
+// URL de autorização, visível na barra de endereço do navegador. É o mesmo
+// valor de process.env.STRAVA_CLIENT_ID na Vercel, já validado em produção.
+// Fixo como constante para eliminar a necessidade de o usuário digitar/saber
+// o que é um Client ID.
+const STRAVA_CLIENT_ID_PUBLIC = '230314';
 
 function getStravaTokens() {
   try { return JSON.parse(localStorage.getItem(getStravaKey())||'null'); } catch(e){return null;}
@@ -5022,16 +5007,13 @@ function updateStravaBadge() {
 }
 
 function stravaConnect() {
-  const clientId = document.getElementById('cfg-strava-id').value.trim();
-  if(!clientId || isNaN(clientId)) {
-    showStravaStatus('err', 'Insira um Client ID válido (número).');
-    return;
-  }
-  // Save client ID for later use in token exchange
-  localStorage.setItem(getStravaCidKey(), clientId);
+  // v1.0 (Commit 3): Client ID fixo (STRAVA_CLIENT_ID_PUBLIC) — não lê mais
+  // de um input manual. Continua gravando em getStravaCidKey() para não
+  // quebrar exchangeStravaCode()/downloadFromCloud(), que já leem essa chave.
+  localStorage.setItem(getStravaCidKey(), STRAVA_CLIENT_ID_PUBLIC);
   // The redirect URI must be this same page
   const redirectUri = encodeURIComponent(window.location.href.split('?')[0].split('#')[0]);
-  const authUrl = `https://www.strava.com/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${STRAVA_SCOPE}`;
+  const authUrl = `https://www.strava.com/oauth/authorize?client_id=${STRAVA_CLIENT_ID_PUBLIC}&response_type=code&redirect_uri=${redirectUri}&approval_prompt=auto&scope=${STRAVA_SCOPE}`;
   showStravaStatus('info', 'Abrindo Strava para autorização...');
   window.location.href = authUrl;
 }
@@ -5045,14 +5027,11 @@ function stravaDisconnect() {
   showToast('Strava desconectado');
 }
 
-// v0.9.3 (P1, placeholder): ponto de integração para a futura sincronização
-// automática via Strava Connect (OAuth completo, sem Client ID manual).
-// state.stravaConnection já existe e está pronto para ser preenchido quando
-// o fluxo de OAuth completo for implementado (provavelmente v0.9.4+, junto
-// com um backend ou redirect URI fixo da própria Pacemaker).
-function stravaConnectV2Placeholder() {
-  showToast('Strava Connect (sincronização automática) chega em breve ⚡ — use a importação manual por enquanto.');
-}
+// v1.0 (Commit 3): stravaConnectV2Placeholder() removida — o fluxo automático
+// que ela representava ("em breve") agora é o próprio stravaConnect() acima,
+// que já usa STRAVA_CLIENT_ID_PUBLIC + /api/strava/token, sem Client ID
+// manual. O card placeholder "Strava Connect" que a chamava também foi
+// removido do HTML.
 
 function showStravaStatus(type, msg) {
   const el = document.getElementById('strava-status');
