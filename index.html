@@ -740,10 +740,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <span>0</span><span id="db-month-remain">190 km restantes</span><span>190</span>
         </div>
       </div>
-      <!-- Sub4 progress -->
-      <div class="card" style="margin-bottom:12px">
+      <!-- v1.0 (Commit 4): "Progresso da prova" — antes fixo em "Sub 4h"/"3h58"/"5:41"
+           independente do objetivo real do atleta. Agora title/meta/pace são
+           preenchidos dinamicamente por renderDashboardBase() a partir da
+           Memória do Atleta (state.config.goalType/raceName + athleteProfile.targetTime).
+           Oculto por completo para objetivo de saúde/condicionamento (sem distância de prova). -->
+      <div class="card" id="db-goal-progress-card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="label">Progresso Sub 4h</div>
+          <div class="label" id="db-goal-progress-label">Progresso da prova</div>
           <span class="badge badge-blue" id="db-sub4-badge">Em progresso</span>
         </div>
         <div class="grid3">
@@ -753,18 +757,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           </div>
           <div style="text-align:center;padding:10px 6px;background:var(--accent-dim);border:0.5px solid rgba(232,245,90,0.2);border-radius:8px">
             <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Meta</div>
-            <div class="small-num" style="color:var(--accent)">3h58</div>
+            <div class="small-num" id="db-goal-target" style="color:var(--accent)">--</div>
           </div>
           <div style="text-align:center;padding:10px 6px;background:rgba(255,255,255,0.03);border-radius:8px">
             <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Pace alvo</div>
-            <div class="small-num" style="color:var(--teal)">5:41</div>
+            <div class="small-num" id="db-goal-pace" style="color:var(--teal)">--</div>
           </div>
         </div>
         <div class="pbar-wrap">
           <div class="pbar-fill" id="db-sub4-bar" style="width:0%;background:linear-gradient(90deg,var(--purple),var(--blue))"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3)">
-          <span>Início</span><span id="db-gap-closed">Gap a fechar</span><span>Sub 4h</span>
+          <span>Início</span><span id="db-gap-closed">Gap a fechar</span><span id="db-goal-progress-end-label">Meta</span>
         </div>
       </div>
       <!-- Next workout -->
@@ -949,7 +953,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <div class="suggestions" id="coach-sugs">
         <div class="sug" onclick="quickMsg('Qual treino devo fazer amanhã?')">Treino amanhã</div>
         <div class="sug" onclick="quickMsg('Sinto dor no joelho. O que fazer?')">Dor no joelho</div>
-        <div class="sug" onclick="quickMsg('Como está meu progresso para o sub4?')">Progresso sub4</div>
+        <div class="sug" onclick="quickMsg('Como está meu progresso para a minha meta?')">Progresso da meta</div>
         <div class="sug" onclick="quickMsg('Como me alimentar antes do longão?')">Alimentação longão</div>
         <div class="sug" onclick="quickMsg('Fiz o muro no km 30 ontem. Como evitar?')">Muro km 30</div>
         <div class="sug" onclick="quickMsg('Estou com fadiga alta esta semana. Devo treinar?')">Fadiga alta</div>
@@ -2034,7 +2038,46 @@ function markMissed(dateStr) {
 
 // ==================== CALCULATIONS ====================
 
-function predictMarathon() {
+// v1.0 (Commit 4 — Goal Context): fonte central de distância por objetivo.
+// Único lugar do sistema que sabe converter goalType → km de prova.
+// Mapeamento baseado nos ÚNICOS valores reais de goalType usados no código
+// (confirmado via auditoria: options do <select> em Configurações e chips
+// do onboarding usam exatamente estes 5 valores, nenhum outro existe).
+// 'health' retorna null de propósito — não existe "distância de prova" para
+// objetivo de saúde/condicionamento, e nenhum código deve inventar uma.
+const GOAL_DISTANCE_KM = {
+  marathon: 42.195,
+  half:     21.0975,
+  '10k':    10,
+  '5k':     5
+  // health: sem distância — tratado como null pelo getGoalDistanceKm()
+};
+function getGoalDistanceKm(goalType) {
+  if(goalType === 'health') return null;
+  // Fallback: goalType vazio/desconhecido (ex.: contas antigas migradas sem
+  // esse campo) preserva o comportamento histórico do sistema, que sempre
+  // assumiu maratona — evita NaN/divisão por null em vez de silenciosamente
+  // quebrar o cálculo para esses casos residuais.
+  return GOAL_DISTANCE_KM[goalType] || GOAL_DISTANCE_KM.marathon;
+}
+
+// v1.0 (Commit 4): assinatura mínima do objetivo — usada para decidir se
+// aiStrategy/strategyCycle continuam válidos após uma edição na Memória do
+// Atleta. raceName fica DE FORA de propósito: o nome da prova não muda a
+// distância, o pace-alvo nem a estratégia de treino, só a exibição.
+function getGoalSignature() {
+  const cfg = state.config || {};
+  const p = state.athleteProfile || {};
+  return `${cfg.goalType||''}|${p.targetTime||''}|${cfg.raceDate||''}`;
+}
+
+// v1.0 (Commit 4): generalização de predictMarathon() — antes assumia
+// 42.195km fixo (só funcionava, por coincidência, quando o objetivo era
+// mesmo maratona). Mesma fórmula (Riegel simplificado: pace médio dos
+// longões recentes × fator de fadiga 1.055 × distância alvo), agora
+// parametrizada pela distância real do objetivo atual.
+function predictRaceTime(distanceKm) {
+  if(!distanceKm) return 0; // objetivo de saúde, ou sem distância aplicável
   const longoes = state.workouts
     .filter(w=>w.type==='long'&&isCompleted(w)&&w.dist>0&&w.pace&&paceToSec(w.pace)>0)
     .sort((a,b)=>b.date.localeCompare(a.date));
@@ -2043,7 +2086,31 @@ function predictMarathon() {
   const avgPaceSec = recent.reduce((a,w)=>a+paceToSec(w.pace),0)/recent.length;
   if(!avgPaceSec) return 0;
   const adjPace = avgPaceSec * 1.055;
-  return Math.round(adjPace * 42.195);
+  return Math.round(adjPace * distanceKm);
+}
+
+// v1.0 (Commit 4): fonte central do pace-alvo — deriva de
+// state.athleteProfile.targetTime + state.config.goalType, nunca de um
+// tempo/distância fixo. Retorna null se não houver distância aplicável
+// (saúde) OU se o atleta ainda não definiu um tempo alvo — nesses casos os
+// componentes que consomem isso devem tratar como "sem meta definida", em
+// vez de inventar um fallback de maratona (era exatamente isso que causava
+// o bug: fallback fixo em 'sub 3h58' / pace dividido por 42.195).
+function getTargetPaceInfo() {
+  const goalDistanceKm = getGoalDistanceKm(state.config.goalType);
+  if(!goalDistanceKm) return null;
+  const targetTimeStr = state.athleteProfile?.targetTime || '';
+  if(!targetTimeStr) return null;
+  const targetSec = parseTargetTimeToSec(targetTimeStr);
+  if(!targetSec) return null;
+  const targetPaceSec = targetSec / goalDistanceKm;
+  return {
+    goalDistanceKm,
+    targetSec,
+    targetLabel: targetTimeStr,
+    targetPaceSec,
+    targetPaceStr: secToPace(Math.round(targetPaceSec))
+  };
 }
 
 function readinessScore() {
@@ -2206,19 +2273,49 @@ function renderDashboardBase() {
   document.getElementById('db-month-bar-text').textContent = mkm.toFixed(1)+' km executados';
   document.getElementById('db-month-remain').textContent = Math.max(0,mg-mkm).toFixed(1)+' km restantes';
 
-  // Sub4 prediction
-  const pred = predictMarathon();
-  const targetSec = 4*3600-120;
-  if(pred > 0) {
-    document.getElementById('db-predicted').textContent = secToTime(pred);
-    const worstSec = 5.5*3600;
-    const gapClosed = Math.max(0,Math.min(100,(worstSec-pred)/(worstSec-targetSec)*100));
-    document.getElementById('db-sub4-bar').style.width = gapClosed+'%';
-    document.getElementById('db-gap-closed').textContent = gapClosed.toFixed(0)+'% do gap fechado';
-    if(pred<=targetSec) document.getElementById('db-sub4-badge').textContent='✓ Sub 4h alcançado!';
-  } else {
-    document.getElementById('db-predicted').textContent = '--';
-    document.getElementById('db-gap-closed').textContent = 'Registre longões para previsão';
+  // v1.0 (Commit 4): "Progresso da prova" — antes assumia maratona/sub4h fixo.
+  // Agora deriva tudo da Memória do Atleta: distância pelo goalType, meta/pace
+  // pelo targetTime configurado. Nenhum fallback de maratona é mais usado aqui.
+  const goalCard = document.getElementById('db-goal-progress-card');
+  const isHealthGoalDb = state.config.goalType === 'health';
+  if(goalCard) goalCard.style.display = isHealthGoalDb ? 'none' : '';
+
+  if(!isHealthGoalDb) {
+    const goalDistanceKm = getGoalDistanceKm(state.config.goalType);
+    const pred = predictRaceTime(goalDistanceKm);
+    const targetInfo = getTargetPaceInfo(); // null se não houver tempo alvo definido
+    const raceLabel = state.config.raceName || 'prova';
+
+    const labelEl = document.getElementById('db-goal-progress-label');
+    if(labelEl) labelEl.textContent = `Progresso para ${raceLabel}`;
+    const endLabelEl = document.getElementById('db-goal-progress-end-label');
+    if(endLabelEl) endLabelEl.textContent = targetInfo ? targetInfo.targetLabel : 'Meta';
+
+    const targetBox = document.getElementById('db-goal-target');
+    const paceBox = document.getElementById('db-goal-pace');
+    if(targetBox) targetBox.textContent = targetInfo ? targetInfo.targetLabel : '--';
+    if(paceBox) paceBox.textContent = targetInfo ? targetInfo.targetPaceStr : '--';
+
+    if(pred > 0) {
+      document.getElementById('db-predicted').textContent = secToTime(pred);
+      if(targetInfo) {
+        const targetSecDb = targetInfo.targetSec;
+        // "Pior caso" pra escala da barra: 45% mais lento que a meta — proporcional
+        // à meta atual, não mais um valor fixo de 5h30 calibrado só pra maratona.
+        const worstSec = targetSecDb * 1.45;
+        const gapClosed = Math.max(0,Math.min(100,(worstSec-pred)/(worstSec-targetSecDb)*100));
+        document.getElementById('db-sub4-bar').style.width = gapClosed+'%';
+        document.getElementById('db-gap-closed').textContent = gapClosed.toFixed(0)+'% do gap fechado';
+        if(pred<=targetSecDb) document.getElementById('db-sub4-badge').textContent='✓ Meta alcançada!';
+        else document.getElementById('db-sub4-badge').textContent='Em progresso';
+      } else {
+        document.getElementById('db-sub4-bar').style.width = '0%';
+        document.getElementById('db-gap-closed').textContent = 'Defina um tempo alvo na Memória do Atleta';
+      }
+    } else {
+      document.getElementById('db-predicted').textContent = '--';
+      document.getElementById('db-gap-closed').textContent = 'Registre longões para previsão';
+    }
   }
 
   // Readiness
@@ -2800,10 +2897,14 @@ function renderRaceIQ() {
     .sort((a,b)=>b.date.localeCompare(a.date));
 
   // Prediction: use up to 4 most recent longões with real pace
-  const pred = realLongoes.length > 0 ? (() => {
+  // v1.0 (Commit 4): distância derivada do objetivo real via getGoalDistanceKm()
+  // — antes fixa em 42.195km, o que produzia previsões de escala de maratona
+  // mesmo com o objetivo configurado como Meia Maratona/10k/5k.
+  const goalDistanceKm = getGoalDistanceKm(state.config.goalType);
+  const pred = realLongoes.length > 0 && goalDistanceKm ? (() => {
     const recent = realLongoes.slice(0,4);
     const avgPaceSec = recent.reduce((a,w)=>a+paceToSec(w.pace),0)/recent.length;
-    return Math.round(avgPaceSec * 1.055 * 42.195);
+    return Math.round(avgPaceSec * 1.055 * goalDistanceKm);
   })() : 0;
 
   // v0.9.2.2 (P0): flag única de verdade — controla TUDO relacionado a previsão.
@@ -2815,32 +2916,37 @@ function renderRaceIQ() {
   if(gapCard)  gapCard.style.display  = hasRacePrediction ? '' : 'none';
   if(raceZone) raceZone.style.display = hasRacePrediction ? '' : 'none';
 
-  // Target time: usa o que foi definido no onboarding/config, com fallback pro sub4 clássico
-  const targetTimeStr = state.athleteProfile?.targetTime || '';
-  const targetSec = targetTimeStr ? parseTargetTimeToSec(targetTimeStr) : (4*3600-120);
-  const targetLabel = targetTimeStr || 'sub 3h58';
-  const targetPaceSec = targetSec / 42.195;
-  const pMin = Math.floor(targetPaceSec/60);
-  const pSec = Math.round(targetPaceSec%60);
-  const targetPaceStr = `${pMin}:${String(pSec).padStart(2,'0')}/km`;
+  // v1.0 (Commit 4): pace-alvo vem da fonte central getTargetPaceInfo() —
+  // deriva de athleteProfile.targetTime + a distância real do objetivo.
+  // ANTES: sem tempo alvo definido, caía num fallback fixo de "sub 3h58" e
+  // dividia por 42.195km (essa divisão é a causa raiz exata do bug relatado:
+  // 7200s / 42.195km = 2:51/km para uma meia maratona Sub 2h). Agora, sem
+  // tempo alvo definido, a UI mostra "sem meta definida" em vez de inventar
+  // um valor de maratona.
+  const targetInfo = getTargetPaceInfo(); // null se não houver tempo alvo definido
+  const hasTargetPace = !!targetInfo;
+  const targetSec = targetInfo ? targetInfo.targetSec : null;
+  const targetLabel = targetInfo ? targetInfo.targetLabel : 'não definida';
+  const targetPaceStr = targetInfo ? `${targetInfo.targetPaceStr}/km` : '--';
 
   const gapLabel = document.getElementById('race-gap-label');
-  if(gapLabel) gapLabel.textContent = `Gap para o ${targetLabel}`;
+  if(gapLabel) gapLabel.textContent = hasTargetPace ? `Gap para o ${targetLabel}` : 'Gap para a meta';
   const targetLine = document.getElementById('race-target-line');
   // v0.9.2.2 (P0): a linha "Meta: sub-X · Pace: ..." só aparece junto com uma previsão válida —
   // caso contrário some por completo (fica dentro do hero, que já vira a tela de "mais dados").
   if(targetLine) {
-    targetLine.style.display = hasRacePrediction ? '' : 'none';
-    if(hasRacePrediction) {
+    targetLine.style.display = (hasRacePrediction && hasTargetPace) ? '' : 'none';
+    if(hasRacePrediction && hasTargetPace) {
       targetLine.innerHTML = `Meta: <strong style="color:var(--accent)">${targetLabel}</strong> · Pace: <strong style="color:var(--teal)">${targetPaceStr}</strong>`;
     }
   }
   const raceZoneName = document.getElementById('race-pace-zone-name');
-  if(raceZoneName) raceZoneName.textContent = `Race Pace · ${targetLabel}`;
+  if(raceZoneName) raceZoneName.textContent = hasTargetPace ? `Race Pace · ${targetLabel}` : 'Race Pace';
   const raceZoneVal = document.getElementById('race-pace-zone-val');
   // v0.9.2.2 (P0): antes esse valor era texto fixo no HTML ("5:41 /km"), nunca atualizado —
-  // agora reflete o pace real da meta, e só é renderizado quando hasRacePrediction é true.
-  if(raceZoneVal && hasRacePrediction) raceZoneVal.textContent = `${targetPaceStr.replace('/km',' /km')}`;
+  // agora reflete o pace real da meta (ou "--" se não houver meta definida), e só é
+  // renderizado quando hasRacePrediction é true.
+  if(raceZoneVal && hasRacePrediction) raceZoneVal.textContent = hasTargetPace ? targetPaceStr.replace('/km',' /km') : '--';
 
   // Source card
   const srcEl = document.getElementById('race-source-card');
@@ -2866,16 +2972,26 @@ function renderRaceIQ() {
 
   if(pred>0) {
     document.getElementById('race-predicted').textContent = secToTime(pred);
-    const gap = pred - targetSec;
-    if(gap>0) {
-      const gapMin = Math.floor(gap/60);
-      document.getElementById('race-gap-badge').textContent = `+${gapMin}min da meta`;
-      document.getElementById('race-gap-bar').style.width = Math.min(100, Math.max(5, (1-(gap/(2.5*3600)))*100))+'%';
-      document.getElementById('race-gap-desc').textContent = `Faltam ${gapMin} minutos para a meta. Baseado em ${realLongoes.length} longão(s) real(is).`;
+    if(hasTargetPace) {
+      const gap = pred - targetSec;
+      if(gap>0) {
+        const gapMin = Math.floor(gap/60);
+        document.getElementById('race-gap-badge').textContent = `+${gapMin}min da meta`;
+        // v1.0 (Commit 4): "pior caso" da barra proporcional à própria meta
+        // (45% mais lento que o alvo) — antes era um valor fixo de 2.5h,
+        // calibrado só pra escala de tempos de maratona.
+        const worstGap = targetSec * 0.45;
+        document.getElementById('race-gap-bar').style.width = Math.min(100, Math.max(5, (1-(gap/worstGap))*100))+'%';
+        document.getElementById('race-gap-desc').textContent = `Faltam ${gapMin} minutos para a meta. Baseado em ${realLongoes.length} longão(s) real(is).`;
+      } else {
+        document.getElementById('race-gap-badge').textContent = '✓ Meta batida!';
+        document.getElementById('race-gap-bar').style.width = '100%';
+        document.getElementById('race-gap-desc').textContent = 'Previsão dentro da meta com base nos seus longões reais!';
+      }
     } else {
-      document.getElementById('race-gap-badge').textContent = '✓ Meta batida!';
-      document.getElementById('race-gap-bar').style.width = '100%';
-      document.getElementById('race-gap-desc').textContent = 'Previsão dentro da meta com base nos seus longões reais!';
+      document.getElementById('race-gap-badge').textContent = 'Defina uma meta';
+      document.getElementById('race-gap-bar').style.width = '0%';
+      document.getElementById('race-gap-desc').textContent = 'Defina um tempo alvo na Memória do Atleta para calcular o gap.';
     }
     document.getElementById('race-basis').textContent =
       `${realLongoes.length} longão(s) real(is)${realLongoes.some(w=>w.stravaId)?' · Strava':' · manual'}`;
@@ -2927,6 +3043,15 @@ function parseTargetTimeToSec(str) {
   const colonMatch = cleaned.match(/(\d+):(\d+)/);
   if(colonMatch) {
     return parseInt(colonMatch[1])*3600 + parseInt(colonMatch[2])*60;
+  }
+  // v1.0 (Commit 4): formato "Xmin"/"X min" — natural pra metas de 10k/5k
+  // (ex: "Sub 45min", "Sub 22min"). Sem isso, esse texto não batia com os
+  // padrões acima e caía direto no fallback de 3h58 (marathon sub-4h) — o
+  // mesmo hardcode que este commit existe pra eliminar, só que reaparecendo
+  // por dentro do parser de tempo em vez da constante de distância.
+  const minMatch = cleaned.match(/(\d+)\s*min/);
+  if(minMatch) {
+    return parseInt(minMatch[1]) * 60;
   }
   return 4*3600-120;
 }
@@ -3373,7 +3498,7 @@ ${evolution}
 ESTADO ATUAL (${today()}):
 - Semana: ${c.wkm}km | Meta: ${cfg.weekGoal||52}km | Aderência: ${c.adh}%
 - Prontidão: ${c.rs}/100 | Fadiga Recente: ${c.fatigueTrend||'--'}/5 | RPE: ${c.rpeTrend||'--'}/10
-${isHealthGoal ? '' : `- Previsão maratona: ${c.pred?secToTime(c.pred):'sem dados'}`}
+${isHealthGoal ? '' : `- Distância da prova: ${c.goalDistanceKm?c.goalDistanceKm.toFixed(1)+'km':'não definida'} | Previsão atual: ${c.pred?secToTime(c.pred):'sem dados'}${c.targetPaceInfo?` | Meta: ${c.targetPaceInfo.targetLabel} | Pace alvo: ${c.targetPaceInfo.targetPaceStr}/km`:''}`}
 
 DIRETRIZES DE COACHING:
 1. FOCO NA EVOLUÇÃO: Analise a tendência das últimas 8 semanas. O atleta está progredindo volume? O pace está baixando?
@@ -3468,7 +3593,10 @@ function buildCoachContext() {
   const wkm = kmThisWeek().toFixed(1);
   const mkm = kmThisMonth().toFixed(0);
   const rs = readinessScore();
-  const pred = predictMarathon();
+  // v1.0 (Commit 4): distância derivada do objetivo real, não mais fixa em maratona.
+  const goalDistanceKm = getGoalDistanceKm(state.config.goalType);
+  const pred = predictRaceTime(goalDistanceKm);
+  const targetPaceInfo = getTargetPaceInfo(); // null se sem tempo alvo definido
   const adh = planAdherence();
   const tomorrowStr = new Date(Date.now()+86400000).toISOString().split('T')[0];
   
@@ -3486,6 +3614,7 @@ function buildCoachContext() {
 
   return {
     days, wkm, mkm, pred, rs, adh,
+    goalDistanceKm, targetPaceInfo,
     tomorrowIsWork: isWorkDay(tomorrowStr),
     longoes,
     fatigueTrend, rpeTrend,
@@ -3976,9 +4105,15 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
         steps:[{icon:'🔥',text:'Aquecimento 2km Z2',detail:''},{icon:'⚡',text:`${dist-4}x1km forte`,detail:'pace 5:00–5:15'},{icon:'🚶',text:'Rec 90s trotando',detail:''},{icon:'🏁',text:'Desaquecimento 2km',detail:''}]};
     } else {
       const seg = Math.round(dist/3);
+      // v1.0 (Commit 4): pace alvo vem de ctx.targetPaceInfo (já calculado por
+      // buildCoachContext() a partir do objetivo real do atleta) — antes era
+      // "5:41" fixo, herdado de quando o app só suportava maratona sub-4h.
+      const tpi = ctx?.targetPaceInfo;
+      const paceAlvoNum = tpi ? tpi.targetPaceStr : null;
+      const paceAlvoRange = tpi ? `${tpi.targetPaceStr}–${secToPace(Math.round(tpi.targetPaceSec+9))}/km` : 'forte, perto do pace de prova';
       d.workout={type:'progressivo',title:`Progressivo ${dist}km`,dist,pace:'6:00–6:20',
-        desc:`${dist}km: ${seg}km Z2 → ${seg}km Z3 → ${dist-2*seg}km pace alvo (5:41)`,
-        steps:[{icon:'🔥',text:`${seg}km Z2`,detail:'pace 6:30–6:45'},{icon:'🏃',text:`${seg}km Z3`,detail:'pace 6:00–6:15'},{icon:'⚡',text:`${dist-2*seg}km pace alvo`,detail:'5:41–5:50/km'}]};
+        desc:`${dist}km: ${seg}km Z2 → ${seg}km Z3 → ${dist-2*seg}km pace alvo${paceAlvoNum?` (${paceAlvoNum})`:''}`,
+        steps:[{icon:'🔥',text:`${seg}km Z2`,detail:'pace 6:30–6:45'},{icon:'🏃',text:`${seg}km Z3`,detail:'pace 6:00–6:15'},{icon:'⚡',text:`${dist-2*seg}km pace alvo`,detail:paceAlvoRange}]};
     }
     remaining -= (d.workout?.dist||0);
   });
@@ -4169,11 +4304,17 @@ function buildStepsFromType(w) {
     {icon:'🚶',text:'Rec 90s trotando',detail:'entre séries'},
     {icon:'🏁',text:'Desaquecimento 2km',detail:''}
   ];
-  if(type==='progressivo') return [
-    {icon:'🔥',text:`${Math.round(dist/3)}km Z2`,detail:'aquecimento'},
-    {icon:'🏃',text:`${Math.round(dist/3)}km Z3`,detail:'progressão'},
-    {icon:'⚡',text:`${dist-2*Math.round(dist/3)}km pace alvo`,detail:'5:41–5:50/km'}
-  ];
+  if(type==='progressivo') {
+    // v1.0 (Commit 4): pace alvo derivado do objetivo real (getTargetPaceInfo),
+    // não mais fixo em "5:41–5:50/km" (pace de maratona sub-4h).
+    const tpi = getTargetPaceInfo();
+    const paceDetail = tpi ? `${tpi.targetPaceStr}–${secToPace(Math.round(tpi.targetPaceSec+9))}/km` : 'forte, perto do pace de prova';
+    return [
+      {icon:'🔥',text:`${Math.round(dist/3)}km Z2`,detail:'aquecimento'},
+      {icon:'🏃',text:`${Math.round(dist/3)}km Z3`,detail:'progressão'},
+      {icon:'⚡',text:`${dist-2*Math.round(dist/3)}km pace alvo`,detail:paceDetail}
+    ];
+  }
   if(type==='strength') {
     const idx = getNextStrengthSession();
     return STRENGTH_SESSIONS[idx].steps;
@@ -4723,13 +4864,27 @@ const mockResponses = [
   { keys:['semana','plano','planejar','distribuir'],
     reply(c){ return `Use o card "Planejar semana" acima — é exatamente para isso. Você informa a meta de km e disposição do corpo, eu monto o plano nos dias certos considerando sua escala 2x2. Semana passada você fez ${c.lastWeekKm}km.`; }},
   { keys:['sub4','sub 4','4 hora','meta','objetivo'],
-    reply(c){ const pred=predictMarathon(); return `Sub 4h = 5:41/km constantes por 42km. Previsão atual: ${pred?secToTime(pred):'sem dados de longão ainda'}. ${pred&&pred>14280?`Você precisa fechar ${Math.round((pred-14280)/60)} minutos. `:''}Com ${c.days} dias, o caminho é: 2 longões acima de 28km, treinos de pace específico a 5:41, e taper de 3 semanas antes da prova.`; }},
+    reply(c){
+      // v1.0 (Commit 4): antes sempre respondia "Sub 4h = 5:41/km ... 42km",
+      // fixo, mesmo para quem definiu Meia Maratona/10k/5k como meta. Agora
+      // deriva tudo de c.targetPaceInfo/c.goalDistanceKm (buildCoachContext()).
+      const tpi = c.targetPaceInfo;
+      if(!tpi) return `Ainda não vejo um tempo alvo definido em Memória do Atleta. Defina sua meta (ex: "Sub 2h") em Configurações pra eu calcular o pace exato que você precisa manter.`;
+      const pred = c.pred;
+      return `Meta: ${tpi.targetLabel} = ${tpi.targetPaceStr}/km constantes por ${c.goalDistanceKm.toFixed(1)}km. Previsão atual: ${pred?secToTime(pred):'sem dados de longão ainda'}. ${pred&&pred>tpi.targetSec?`Você precisa fechar ${Math.round((pred-tpi.targetSec)/60)} minutos. `:''}Com ${c.days} dias, o caminho é: longões progressivos, treinos de pace específico a ${tpi.targetPaceStr}, e taper antes da prova.`;
+    }},
   { keys:['fadiga','cansado','sobretreinamento','overtraining'],
     reply(c){ return `Prontidão atual: ${c.rs}/100. ${c.rs<50?'Sinal claro de que precisa de recuperação. 1–2 dias OFF ou atividade muito leve (bike 30min, caminhada).':c.rs<70?'Atenção: treine mas reduza intensidade hoje.':'Você está bem para treinar.'} Lembra: o crescimento acontece na recuperação. Dormir 7–8h é parte do treino.`; }},
   { keys:['amanhã','amanha','hoje','treino'],
     reply(c){ const isW=c.tomorrowIsWork; return `Amanhã é ${isW?'dia de TRABALHO':'dia de FOLGA'}. ${isW?'Sugestão: musculação de manhã (40min, foco em core e glúteos) + corrida Z2 à noite (8–10km, FC <140bpm).':'Ótimo para treino de qualidade. Sugestão: progressivo 12–14km ou tiros, dependendo do seu nível de fadiga.'} Prontidão atual: ${c.rs}/100.`; }},
   { keys:['progresso','evolução','evolucao','como estou'],
-    reply(c){ const pred=predictMarathon(); return `Resumo atual: ${c.mkm}km este mês (meta ${state.config.monthGoal||190}km) · ${c.wkm}km esta semana · Previsão maratona: ${pred?secToTime(pred):'registre longões para calcular'} · Prontidão: ${c.rs}/100 · ${c.days} dias até a prova. ${c.lastWeekKm>0?`Semana passada: ${c.lastWeekKm}km.`:''}`; }},
+    reply(c){
+      // v1.0 (Commit 4): "Previsão maratona" trocado por label real da prova —
+      // usava predictMarathon()/rótulo fixo mesmo pra quem não corre maratona.
+      const pred = c.pred;
+      const raceLabel = state.config.raceName || 'sua prova';
+      return `Resumo atual: ${c.mkm}km este mês (meta ${state.config.monthGoal||190}km) · ${c.wkm}km esta semana · Previsão ${raceLabel}: ${pred?secToTime(pred):'registre longões para calcular'} · Prontidão: ${c.rs}/100 · ${c.days} dias até a prova. ${c.lastWeekKm>0?`Semana passada: ${c.lastWeekKm}km.`:''}`;
+    }},
   { keys:['musculação','musculacao','força','forca','peito','costas','perna','academia'],
     reply(c){ const s=c.strengthSessions; return `${s===0?'Você não fez musculação esta semana ainda.':s===1?'1 sessão de musculação esta semana.':s+' sessões de musculação esta semana.'} A força complementa a corrida: glúteos e core protegem os joelhos e melhoram a economia de movimento. Mínimo 2 sessões/semana na fase de construção. Rotação A (Peito/Tríceps) → B (Costas/Bíceps) → C (Pernas) garante recuperação entre grupos.`; }},
   { keys:['recuperação','recuperacao','descanso','rest','dormir','sono'],
@@ -4877,6 +5032,13 @@ function saveAthleteMemory() {
     ? Array.from(document.querySelectorAll('#cfg-custom-days-chips .ob-chip.sel')).map(c=>c.dataset.val)
     : [];
 
+  // v1.0 (Commit 4): captura a assinatura do objetivo ANTES de sobrescrever
+  // state.config/athleteProfile, pra comparar com a assinatura depois e saber
+  // se aiStrategy/strategyCycle precisam ser invalidados. Isso NÃO invalida a
+  // cada salvamento — só quando goalType/targetTime/raceDate realmente mudam
+  // (raceName fica de fora de propósito: não afeta a estratégia de treino).
+  const oldGoalSignature = getGoalSignature();
+
   state.config = {
     ...state.config,
     goalType:   document.getElementById('cfg-goal-type').value,
@@ -4902,6 +5064,30 @@ function saveAthleteMemory() {
     notes:         document.getElementById('cfg-ap-notes')?.value||'',
     updatedAt:     today()
   };
+
+  // v1.0 (Commit 4): invalidação inteligente — só age se o objetivo REAL mudou
+  // (goalType, targetTime ou raceDate), não em qualquer salvamento da Memória
+  // do Atleta. Resolve dois bugs confirmados na auditoria:
+  // 1) aiStrategy continuava com o "rationale"/volume calculados pra um
+  //    objetivo antigo (ex: maratona), sendo injetado no Coach mesmo depois
+  //    do atleta mudar pra meia maratona.
+  // 2) strategyCycle misturava state.config.raceName NOVO com
+  //    strategyCycle.raceDate ANTIGO (da prova já concluída), gerando um
+  //    card de "Ciclo de Prova completo" contraditório no Dashboard.
+  const newGoalSignature = getGoalSignature();
+  if(oldGoalSignature !== newGoalSignature) {
+    state.aiStrategy = null; // Coach/UI já tratam ausência de estratégia graciosamente
+    // Reconstrói strategyCycle com o MESMO formato que finishOnboarding() já
+    // usa pra criar o primeiro ciclo — trocar de objetivo é, na prática,
+    // começar um novo ciclo de treino, não uma feature nova.
+    state.strategyCycle = {
+      goalType:    state.config.goalType || '',
+      targetTime:  state.athleteProfile.targetTime || '',
+      raceDate:    state.config.raceDate || '',
+      generatedAt: new Date().toISOString(),
+      status: 'ACTIVE'
+    };
+  }
 
   save();
   updateRaceBlockVisibility();
