@@ -2753,7 +2753,7 @@ function exportNextWeekToCalendar() {
 
 function plannerNav(dir) { plannerOffset+=dir; renderPlanner(); }
 
-// ==================== ZONE INTELLIGENCE ARCHITECTURE (v0.9.2) ====================
+// ==================== ZONE INTELLIGENCE ARCHITECTURE (v0.9.2 → v1.0 Zone Engine Commit 1) ====================
 // ─────────────────────────────────────────────────────────────────────────────────
 // Dados necessários para cada nível de cálculo:
 //
@@ -2774,6 +2774,27 @@ function plannerNav(dir) { plannerOffset+=dir; renderPlanner(); }
 //   - Integração Strava para pace + FC automáticos
 //   - VO2max estimado por prova ou equipamento
 // ─────────────────────────────────────────────────────────────────────────────────
+//
+// v1.0 (Zone Engine — Commit 1): ESTE COMMIT SÓ PREPARA DADOS. Nenhuma fórmula
+// de zona (Z1=X%, Z2=Y%...) é decidida aqui — isso fica pra um commit futuro,
+// depois de revisar exatamente quais dados o Engine consegue entregar. A
+// tabela estática do Race IQ, o Planner, o Dashboard e o Coach CONTINUAM
+// usando os valores hardcoded de sempre — nada disso lê os campos novos
+// abaixo ainda.
+//
+// Critério de "treino de qualidade" (qualityRunCount): conta workouts já
+// classificados como type 'interval'/'tempo'/'progressivo' dentro do mesmo
+// conjunto completedRuns (pace válido, dist>0, não-planejado). NÃO usa pace
+// como proxy de qualidade por conta própria — mas é importante registrar um
+// limite conhecido: a auto-detecção do Strava (detectRunType(), em outro
+// ponto do arquivo) tem um fallback fraco que classifica como 'interval'
+// qualquer corrida com pace médio abaixo de 5:30/km, mesmo sem ter sido um
+// treino intervalado de verdade. Como o workout salvo não registra QUAL
+// critério de detecção disparou, não há como distinguir isso depois do fato
+// — este count mistura sinais confiáveis (escolha manual do usuário, ou
+// título com "tiro"/"interval"/"tempo"/"prog") com esse sinal mais fraco.
+// Registrado aqui explicitamente para quem for definir a matemática das
+// zonas depois: não tratar qualityRunCount como certeza fisiológica.
 function getZoneReadiness() {
   const completedRuns = state.workouts.filter(w =>
     !w.planned &&
@@ -2799,7 +2820,53 @@ function getZoneReadiness() {
   if(pacedRuns.length < 5) missing.push(`${Math.max(0, 5-pacedRuns.length)} corridas com pace`);
   if(longRuns.length < 1)  missing.push('1 longão de 15km+ com pace');
 
-  return { hasMinimum, hasStandard, runsWithPace: pacedRuns.length, longRunCount: longRuns.length, avgPaceSec, bestLongPace, missing };
+  // ── NOVO (Zone Engine Commit 1) — daqui pra baixo, tudo é adição pura ──
+
+  // FC: agregada só dentro de completedRuns (mesma população-base de pace),
+  // pra manter o Engine internamente consistente — uma única fonte, não duas
+  // listas divergentes de "treinos considerados" pra pace vs. pra FC.
+  // minHR/maxHR aqui são a MENOR e a MAIOR FC MÉDIA observada entre esses
+  // treinos — não é FC de repouso nem FC máxima real do atleta, é só a
+  // faixa que os próprios treinos já mostraram. Nenhuma fórmula de idade
+  // (220-idade, etc.) é usada — o sistema não tem idade do atleta.
+  const runsWithHRList = completedRuns.filter(w => w.hr > 0);
+  const runsWithHR = runsWithHRList.length;
+  const avgHR = runsWithHR > 0
+    ? Math.round(runsWithHRList.reduce((a,w) => a + w.hr, 0) / runsWithHR)
+    : 0;
+  const minHR = runsWithHR > 0 ? Math.min(...runsWithHRList.map(w => w.hr)) : 0;
+  const maxHR = runsWithHR > 0 ? Math.max(...runsWithHRList.map(w => w.hr)) : 0;
+
+  // Treinos de qualidade — ver nota de metodologia no comentário acima da função.
+  const qualityTypeList = ['interval','tempo','progressivo'];
+  const qualityRunsList = completedRuns.filter(w => qualityTypeList.includes(w.type));
+  const qualityRunCount = qualityRunsList.length;
+  const qualityRunTypes = qualityTypeList.reduce((acc, t) => {
+    acc[t] = qualityRunsList.filter(w => w.type === t).length;
+    return acc;
+  }, {});
+
+  // Gates explícitos — cada um responde "temos dados suficientes pra X?"
+  // isoladamente. Números abaixo (5, 10, 3, 5) são limiares conservadores
+  // propostos para este commit — mesma ordem de grandeza dos limiares que
+  // já existiam em hasMinimum/hasStandard, não uma fórmula nova validada
+  // estatisticamente. Ficam explícitos aqui pra serem revisados/ajustados
+  // no commit da matemática das zonas, sem precisar mexer no Engine de novo.
+  const paceMinimum = hasMinimum;          // alias — mesmo critério de sempre
+  const paceStandard = hasStandard;        // alias — mesmo critério de sempre
+  const qualityMinimum = qualityRunCount >= 3;
+  const hrMinimum = runsWithHR >= 5;
+  const hrCalibration = hrMinimum;         // nome explícito pedido: false quando dado insuficiente
+
+  return {
+    // ── campos e comportamento originais, 100% preservados ──
+    hasMinimum, hasStandard, runsWithPace: pacedRuns.length, longRunCount: longRuns.length,
+    avgPaceSec, bestLongPace, missing,
+    // ── novos campos (Zone Engine Commit 1) ──
+    runsWithHR, avgHR, minHR, maxHR,
+    qualityRunCount, qualityRunTypes,
+    paceMinimum, paceStandard, qualityMinimum, hrMinimum, hrCalibration
+  };
 }
 
 // ==================== RENDER RACE IQ ====================
@@ -5472,6 +5539,16 @@ function stravaImportSelected() {
       dist: distKm,
       pace: paceSec ? secsToPaceStr(paceSec) : '',
       hr: a.average_heartrate ? Math.round(a.average_heartrate) : 0,
+      // v1.0 (Zone Engine — Commit 1): captura max_heartrate e workout_type do
+      // MESMO objeto de resumo que já vem em stravaActivitiesCache (nenhuma
+      // chamada nova ao Strava). Ainda NÃO usados em nenhum cálculo — só
+      // ficam disponíveis pra um commit futuro. workout_type é um campo
+      // não-oficial da API (1='Race'), preenchido só quando o próprio atleta
+      // marca a atividade manualmente no app do Strava — presente em poucas
+      // atividades na prática, por isso fica como metadado opcional, nunca
+      // como fonte primária de classificação.
+      maxHR: a.max_heartrate ? Math.round(a.max_heartrate) : 0,
+      stravaWorkoutType: (typeof a.workout_type === 'number') ? a.workout_type : null,
       duration: Math.round(a.moving_time/60),
       rpe: 0, fatigue: 0,
       notes: a.name !== 'Afternoon Run' && a.name !== 'Morning Run' ? a.name : ''
