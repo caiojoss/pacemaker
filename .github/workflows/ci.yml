@@ -1,0 +1,38 @@
+name: Repository checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-repository-checks:
+    name: Syntax and repository checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check serverless function syntax
+        run: node --check api/strava/token.js
+
+      - name: Verify required engineering documents
+        run: |
+          test -f README.md
+          test -f docs/engineering-workflow.md
+          test -f CONTRIBUTING.md
+          test -f SECURITY.md
+          test -f CHANGELOG.md
+
+# This is intentionally a minimal, dependency-free baseline. Lint, formatting,
+# unit tests and E2E tests are added in their dedicated Issues after their
+# configuration is introduced and validated locally.
