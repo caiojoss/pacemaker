@@ -88,6 +88,14 @@ O Pacemaker combina tecnologias modernas com uma visão de produto modular e esc
 
 ---
 
+## 🛠️ Engineering Workflow
+
+O fluxo oficial de engenharia — Issues, branches, Pull Requests, Preview Deployments, Definition of Done e Quality Gates — está em [docs/engineering-workflow.md](docs/engineering-workflow.md).
+
+Esse documento diferencia controles **adotados**, **planejados** e **a configurar**. Alterações versionadas devem seguir esse workflow antes de chegar à `main`.
+
+---
+
 ## 🗺️ Roadmap de Evolução
 
 ### v0.9.x — Launch Polish (Atual)
