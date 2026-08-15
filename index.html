@@ -900,34 +900,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
 
       <!-- Zones -->
-      <!-- v0.9.2.2 (complementar): id no título e wrapper nas zonas genéricas (Z1-Z4)
-           para que possam ser ocultadas por completo quando getZoneReadiness() indicar
-           dados insuficientes — Opção A. race-pace-zone já é controlada por hasRacePrediction. -->
+      <!-- v1.0 (Zone Engine Commit 2): as zonas Z1-Z4 não são mais texto
+           estático — cada uma é renderizada dinamicamente por
+           renderTrainingZonesSection(), consumindo exclusivamente
+           getTrainingZones(). race-pace-zone continua separado (é a META
+           da prova, não uma zona fisiológica) e mantém sua posição visual
+           original — não é uma "quinta zona". -->
       <div style="font-size:13px;font-weight:700;margin-bottom:10px" id="race-zones-title">Zonas de treino</div>
-      <div id="race-zones-generic">
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z1 · Recuperação</div><div class="pace-zone-bpm">&lt; 125 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--blue)">7:10 /km</div>
-        </div>
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z2 · Base aeróbica</div><div class="pace-zone-bpm">125–142 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--green)">6:20 /km</div>
-        </div>
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z3 · Tempo/Limiar</div><div class="pace-zone-bpm">142–158 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--orange)">5:48 /km</div>
-        </div>
-      </div>
+      <div id="race-zones-list"></div>
       <div class="pace-zone" id="race-pace-zone" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
         <div><div class="pace-zone-name" style="color:var(--accent)" id="race-pace-zone-name">Race Pace · Sub 4h</div><div class="pace-zone-bpm">155–162 bpm</div></div>
         <div class="pace-zone-val" style="color:var(--accent)" id="race-pace-zone-val">5:41 /km</div>
       </div>
-      <div id="race-zones-generic-2">
-        <div class="pace-zone">
-          <div><div class="pace-zone-name">Z4 · VO2max</div><div class="pace-zone-bpm">158–172 bpm</div></div>
-          <div class="pace-zone-val" style="color:var(--red)">5:15 /km</div>
-        </div>
-      </div>
+      <div id="race-zones-list-2"></div>
       <!-- Longão history -->
       <div style="font-size:13px;font-weight:700;margin:16px 0 10px" id="race-source-title">Fonte dos dados</div>
       <div id="race-source-card" style="margin-bottom:12px"></div>
@@ -2123,6 +2108,27 @@ function readinessScore() {
   return Math.min(95, Math.max(30, Math.round(base)));
 }
 
+// v1.0 (Zone Engine Commit 2): helper único usado por nextSuggestedWorkout(),
+// generateWeekPlan() e buildStepsFromType() para descrever Z2 em texto de
+// treino. Consome exclusivamente getTrainingZones() — nenhum desses
+// consumidores define seu próprio pace/FC de Z2 mais.
+function getZ2Reference() {
+  const tz = getTrainingZones();
+  if(tz.z2.status === 'calibrated') {
+    const hrText = tz.z2.heartRate ? ` · FC observada ${tz.z2.heartRate.minHR}–${tz.z2.heartRate.maxHR}bpm` : '';
+    return {
+      calibrated: true,
+      pace: tz.z2.paceLabel,
+      text: `pace ${tz.z2.paceLabel}${hrText}`
+    };
+  }
+  return {
+    calibrated: false,
+    pace: '',
+    text: 'pace fácil, conversável (zona ainda não calibrada)'
+  };
+}
+
 function nextSuggestedWorkout() {
   const d = new Date();
   const tStr = today();
@@ -2132,8 +2138,9 @@ function nextSuggestedWorkout() {
   const longoes = state.workouts.filter(w=>w.type==='long').sort((a,b)=>b.date.localeCompare(a.date));
   const lastLongDate = longoes.length>0 ? longoes[0].date : null;
   const daysSinceLastLong = lastLongDate ? daysBetween(lastLongDate,tStr) : 99;
+  const z2ref = getZ2Reference();
 
-  if(!isWork && daysSinceLastLong >= 6) return {title:'Longão Z2',detail:`${Math.min(22,Math.round((weekGoal-weekKm)*0.5)+14)}km · Pace 6:20–6:40 · FC <145bpm`,type:'long'};
+  if(!isWork && daysSinceLastLong >= 6) return {title:'Longão Z2',detail:`${Math.min(22,Math.round((weekGoal-weekKm)*0.5)+14)}km · ${z2ref.text}`,type:'long'};
   if(!isWork) return {title:'Progressivo / Tiros',detail:'8–14km · Z2 + 4x1km no pace alvo',type:'progressivo'};
   // v0.9.3 (P0): antes esta sugestão assumia musculação em TODA manhã de trabalho,
   // mesmo para corredores que nunca disseram que treinam força. Agora respeita
@@ -2141,7 +2148,7 @@ function nextSuggestedWorkout() {
   const doesStrength = state.athleteProfile?.doesStrength !== false;
   const hasMorning = state.workouts.find(w=>w.date===tStr&&w.type==='strength');
   if(isWork && doesStrength && !hasMorning) return {title:'Musculação (manhã)',detail:'40 min · Foco em glúteos, core e estabilidade',type:'strength'};
-  return {title:'Corrida Z2',detail:'8–10km fácil · FC <140bpm',type:'z2'};
+  return {title:'Corrida Z2',detail:`8–10km fácil · ${z2ref.text}`,type:'z2'};
 }
 
 // ==================== RENDER DASHBOARD ====================
@@ -2869,6 +2876,124 @@ function getZoneReadiness() {
   };
 }
 
+// ==================== TRAINING ZONE ENGINE v1 (Commit 2) ====================
+// Fonte central de verdade: state.workouts → getTrainingZones() → zonas.
+// A partir deste commit, NENHUM consumidor (Race IQ, Planner, Dashboard,
+// Coach) deve calcular sua própria Z1/Z2/Z3 — todos leem esta função.
+//
+// Metodologia (especificação aprovada, não alterada durante a implementação):
+// - Z1: só workouts type='recovery' com pace válido. <3 sessões → não
+//   calibrada. 3–5 → mediana. ≥6 → média. NUNCA Z1 = Z2 − X%.
+//   detectRunType() (import do Strava) não gera 'recovery' automaticamente
+//   — isso não foi alterado neste commit. A ausência de treinos recovery
+//   resulta naturalmente em Z1 não calibrada, por design.
+// - Z2: só longões (type='long' ou dist≥15) com pace válido. Gate:
+//   paceStandard (reaproveitado de getZoneReadiness() — 10+ corridas com
+//   pace, 3+ longões). <6 longões → mediana. ≥6 → média. NUNCA usa
+//   bestLongPace, pior longão, predictRaceTime() ou o pace da meta da prova.
+// - Z3: só type='tempo' ou 'progressivo' — NUNCA 'interval' (auto-detecção
+//   mais fraca, documentado na auditoria). <3 sessões → não calibrada.
+//   3–5 → mediana. ≥6 → média.
+// - Z4: SEMPRE 'uncalibrated' nesta v1, com motivo explicado e lista do que
+//   seria necessário numa v2 — nenhum dado desse tipo é coletado agora.
+// - FC: só observacional, por zona, só com ≥5 treinos DAQUELA zona com
+//   hr>0. Nunca 220-idade, 208-idade, percentual de HRmax, nem maior FC
+//   observada tratada como HRmax real.
+function getTrainingZones() {
+  const zr = getZoneReadiness(); // reaproveita paceStandard já validado ali
+
+  // Estatística central: mediana se n<6 (mais robusta a um único outlier
+  // num histórico ainda pequeno), média se n≥6 (com mais amostras, o efeito
+  // de um único ponto extremo já é proporcionalmente menor). Ver análise
+  // completa aprovada — nenhum percentual arbitrário é aplicado aqui.
+  function paceStats(secsList) {
+    const sorted = [...secsList].sort((a,b) => a-b);
+    const n = sorted.length;
+    const min = sorted[0];
+    const max = sorted[n-1];
+    let central, method;
+    if(n >= 6) {
+      central = sorted.reduce((a,b)=>a+b,0) / n;
+      method = 'média';
+    } else {
+      const mid = Math.floor(n/2);
+      central = (n % 2 !== 0) ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
+      method = 'mediana';
+    }
+    return { central: Math.round(central), min, max, method, n };
+  }
+
+  // FC observacional: só a faixa [minHR,maxHR] REAL dos treinos que
+  // compuseram a zona — nunca uma fórmula, nunca estimada.
+  function hrStats(workoutsInZone) {
+    const withHR = workoutsInZone.filter(w => w.hr > 0);
+    if(withHR.length < 5) return null;
+    return { minHR: Math.min(...withHR.map(w=>w.hr)), maxHR: Math.max(...withHR.map(w=>w.hr)), runCount: withHR.length };
+  }
+
+  function buildZone(workoutsInZone, minCount, missingLabel) {
+    const validPace = workoutsInZone.filter(w =>
+      w.pace && paceToSec(w.pace) > 150 && paceToSec(w.pace) < 800 // mesmo filtro de validade já usado em getZoneReadiness()
+    );
+    if(validPace.length < minCount) {
+      return {
+        status: 'uncalibrated',
+        runCount: validPace.length,
+        reason: `Precisamos de pelo menos ${minCount} ${missingLabel} (temos ${validPace.length}).`
+      };
+    }
+    const secs = validPace.map(w => paceToSec(w.pace));
+    const stats = paceStats(secs);
+    return {
+      status: 'calibrated',
+      paceSec: stats.central,
+      paceLabel: `${secToPace(stats.central)}/km`,
+      observedMinSec: stats.min,
+      observedMaxSec: stats.max,
+      observedMinLabel: `${secToPace(stats.min)}/km`,
+      observedMaxLabel: `${secToPace(stats.max)}/km`,
+      runCount: stats.n,
+      method: stats.method,
+      heartRate: hrStats(validPace) // null se <5 com FC válida
+    };
+  }
+
+  // ── Z1: recuperação ──
+  const recoveryWorkouts = state.workouts.filter(w => !w.planned && w.type === 'recovery' && w.dist > 0);
+  const z1 = buildZone(recoveryWorkouts, 3, 'treinos de recuperação');
+
+  // ── Z2: base aeróbica (longões) — gate composto: paceStandard + ≥3 longões válidos ──
+  const longWorkouts = state.workouts.filter(w => !w.planned && (w.type === 'long' || w.dist >= 15) && w.dist > 0);
+  let z2;
+  if(!zr.paceStandard) {
+    z2 = {
+      status: 'uncalibrated',
+      runCount: longWorkouts.filter(w => w.pace && paceToSec(w.pace)>150 && paceToSec(w.pace)<800).length,
+      reason: 'Precisamos de pelo menos 10 corridas com pace e 3 longões registrados.'
+    };
+  } else {
+    z2 = buildZone(longWorkouts, 3, 'longões');
+  }
+
+  // ── Z3: tempo/limiar — só 'tempo'/'progressivo', nunca 'interval' ──
+  const qualityWorkouts = state.workouts.filter(w => !w.planned && (w.type === 'tempo' || w.type === 'progressivo') && w.dist > 0);
+  const z3 = buildZone(qualityWorkouts, 3, 'sessões de tempo/progressivo');
+
+  // ── Z4: nunca calibrada nesta v1 — decisão de metodologia, não falta de volume ──
+  const z4 = {
+    status: 'uncalibrated',
+    reason: 'Z4 ainda não é calibrada nesta versão — os dados que existem hoje (auto-detecção de "interval" por pace) não são confiáveis o suficiente para representar uma zona fisiológica de alta intensidade.',
+    neededData: [
+      'Splits por km dentro de cada atividade (exigiria chamada extra à API do Strava por atividade)',
+      'Duração mínima por repetição, para descartar tiros curtos isolados',
+      'stravaWorkoutType="Race" de forma confiável (hoje é opcional e raro)',
+      'RPE consistente nos treinos (hoje quase sempre ausente em importações do Strava)'
+    ]
+  };
+
+  return { z1, z2, z3, z4 };
+}
+
 // ==================== RENDER RACE IQ ====================
 function renderRaceIQ() {
   const isHealthGoal = state.config.goalType === 'health';
@@ -2880,36 +3005,46 @@ function renderRaceIQ() {
   // visíveis com paces fixos, mesmo sem nenhum dado. Z1-Z4 são genéricas (não
   // dependem do tipo de objetivo), então essa checagem deve correr sempre,
   // antes de qualquer return condicional por tipo de meta.
-  const zoneReadiness = getZoneReadiness();
-  const zonesTitleEl   = document.getElementById('race-zones-title');
-  const zonesGenericEl = document.getElementById('race-zones-generic');
-  const zonesGeneric2El= document.getElementById('race-zones-generic-2');
-  const showGenericZones = zoneReadiness.hasMinimum;
-  if(zonesTitleEl)    zonesTitleEl.style.display    = showGenericZones ? '' : 'none';
-  if(zonesGenericEl)  zonesGenericEl.style.display  = showGenericZones ? '' : 'none';
-  if(zonesGeneric2El) zonesGeneric2El.style.display = showGenericZones ? '' : 'none';
+  // v1.0 (Zone Engine Commit 2): Z1-Z4 agora vêm exclusivamente de
+  // getTrainingZones() — nenhum valor estático, nenhuma mensagem que finge
+  // ter "calculado" algo que na verdade é fixo. Cada zona mostra seu
+  // próprio status (calibrada ou não), sem um score de confiança único
+  // escondendo zonas ruins atrás de uma média geral.
+  const trainingZones = getTrainingZones();
 
-  // Injetar banner de dados insuficientes acima das zonas (ou no lugar delas) se necessário
-  const zoneDataBannerId = 'race-zone-data-banner';
-  let existingBanner = document.getElementById(zoneDataBannerId);
-  if(!existingBanner) {
-    existingBanner = document.createElement('div');
-    existingBanner.id = zoneDataBannerId;
-    const zonesTitle = document.getElementById('race-zones-title');
-    if(zonesTitle) zonesTitle.parentNode.insertBefore(existingBanner, zonesTitle);
+  function renderZoneCard(label, colorVar, zone) {
+    if(zone.status === 'calibrated') {
+      const hrLine = zone.heartRate
+        ? `<div class="pace-zone-bpm">FC observada: ${zone.heartRate.minHR}–${zone.heartRate.maxHR} bpm</div>`
+        : `<div class="pace-zone-bpm" style="color:var(--text3)">FC: dados insuficientes</div>`;
+      return `<div class="pace-zone">
+        <div>
+          <div class="pace-zone-name">${label} <span style="color:var(--teal);font-size:9px">✓ Calibrada</span></div>
+          ${hrLine}
+          <div class="pace-zone-bpm" style="color:var(--text3)">${zone.method} · ${zone.runCount} sessões · observado ${zone.observedMinLabel}–${zone.observedMaxLabel}</div>
+        </div>
+        <div class="pace-zone-val" style="color:var(${colorVar})">${zone.paceLabel}</div>
+      </div>`;
+    }
+    return `<div class="pace-zone" style="opacity:0.6">
+      <div>
+        <div class="pace-zone-name">${label} <span style="color:var(--text3);font-size:9px">⚠ Não calibrada</span></div>
+        <div class="pace-zone-bpm" style="color:var(--text3);max-width:220px;line-height:1.4">${zone.reason}</div>
+      </div>
+      <div class="pace-zone-val" style="color:var(--text3)">--</div>
+    </div>`;
   }
-  if(!zoneReadiness.hasMinimum) {
-    existingBanner.innerHTML = `
-      <div style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.7">
-        🔒 <strong style="color:var(--text2)">Zonas de treino ainda não disponíveis</strong><br>
-        Faltam: <strong style="color:var(--orange)">${zoneReadiness.missing.join(' e ')}</strong>.<br>
-        <span style="color:var(--text3)">As zonas aparecem automaticamente assim que houver dados suficientes.</span>
-      </div>`;
-  } else {
-    existingBanner.innerHTML = `
-      <div style="background:var(--teal-dim);border:0.5px solid rgba(46,232,196,0.15);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:12px;font-family:var(--mono);font-size:10px;color:var(--teal);line-height:1.5">
-        ✓ Zonas calculadas com ${zoneReadiness.runsWithPace} corridas reais
-      </div>`;
+
+  const zonesListEl = document.getElementById('race-zones-list');
+  const zonesList2El = document.getElementById('race-zones-list-2');
+  if(zonesListEl) {
+    zonesListEl.innerHTML =
+      renderZoneCard('Z1 · Recuperação', '--blue', trainingZones.z1) +
+      renderZoneCard('Z2 · Base aeróbica', '--green', trainingZones.z2) +
+      renderZoneCard('Z3 · Tempo/Limiar', '--orange', trainingZones.z3);
+  }
+  if(zonesList2El) {
+    zonesList2El.innerHTML = renderZoneCard('Z4 · Alta intensidade', '--red', trainingZones.z4);
   }
 
   // Toggle hero sections based on goal type
@@ -3071,8 +3206,8 @@ function renderRaceIQ() {
   if(heroRace)     heroRace.style.display     = hasRacePrediction ? '' : 'none';
   if(heroEmptyEl)  heroEmptyEl.style.display  = hasRacePrediction ? 'none' : '';
 
-  // v0.9.3.1 (P0): a checagem de zoneReadiness (Z1-Z4) já roda no topo da função
-  // agora — ver comentário lá. Removido daqui para não duplicar/redeclarar.
+  // v1.0 (Zone Engine Commit 2): Z1-Z4 são renderizadas via
+  // getTrainingZones() logo no topo da função — ver bloco lá.
 
   // Longão history — only real data, never planned
   const ll = document.getElementById('race-longao-list');
@@ -4119,6 +4254,10 @@ function confirmPlan(conservative=false) {
 
 // ==================== GENERATE WEEK PLAN ====================
 function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, params=planParams) {
+  // v1.0 (Zone Engine Commit 2): calculado uma única vez por chamada da
+  // função e reaproveitado em todos os treinos Z2/longão gerados abaixo —
+  // nenhum pace/FC de Z2 é mais definido localmente aqui.
+  const z2ref = getZ2Reference();
   const intensityMult = {conservative:0.82, standard:1.0, aggressive:1.15}[params.intensity]||1;
   const fatigueMultiplier = ({great:1.1,good:1.0,tired:0.75,pain:0.5}[feeling]||1) * intensityMult;
   const priorityFactor = {volume:1.1, rhythm:1.0, recovery:0.85}[params.priority]||1;
@@ -4149,11 +4288,11 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   if(longDay) {
     const dist = Math.min(targetLong, Math.round(planKm * 0.45));
     longDay.workout = {
-      type:'long', title:`Longão ${dist}km`, dist, pace:'6:20–6:45',
-      desc:`${dist}km em Z2 · pace 6:20–6:45 · FC <145bpm`,
+      type:'long', title:`Longão ${dist}km`, dist, pace:z2ref.pace,
+      desc:`${dist}km em Z2 · ${z2ref.text}`,
       steps:[
         {icon:'🔥',text:'Aquecimento 2km leve',detail:'pace >7:00'},
-        {icon:'🏃',text:`${dist-4}km em Z2`,detail:'FC <145bpm · pace 6:20–6:45'},
+        {icon:'🏃',text:`${dist-4}km em Z2`,detail:z2ref.text},
         {icon:'⬆️',text:'Últimos 2km progressivos',detail:'se estiver bem'},
         {icon:'💧',text:'Hidrate a cada 20min',detail:'gel km 10, 20, 30'}
       ]
@@ -4207,14 +4346,14 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
           steps:[{icon:'🛌',text:'Recuperação',detail:'Sem musculação configurada — ajuste em Configurações se quiser incluir.'}]};
       }
     } else if(doesStrength) {
-      d.workout={type:'z2',title:`Musculação + Z2 ${km}km`,dist:km,pace:'6:20–6:40',
+      d.workout={type:'z2',title:`Musculação + Z2 ${km}km`,dist:km,pace:z2ref.pace,
         desc:`Manhã: ${session.label} · Noite: ${km}km Z2`,
-        steps:[{icon:'💪',text:`Musculação — ${session.label}`,detail:'40min · manhã'},{icon:'🏃',text:`Z2 — ${km}km`,detail:`pace 6:20–6:40 · FC <140bpm · noite`}]};
+        steps:[{icon:'💪',text:`Musculação — ${session.label}`,detail:'40min · manhã'},{icon:'🏃',text:`Z2 — ${km}km`,detail:`${z2ref.text} · noite`}]};
       remaining -= km;
     } else {
-      d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:'6:20–6:40',
-        desc:`${km}km Z2 · pace 6:20–6:40 · FC <140bpm`,
-        steps:[{icon:'🏃',text:`${km}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}]};
+      d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:z2ref.pace,
+        desc:`${km}km Z2 · ${z2ref.text}`,
+        steps:[{icon:'🏃',text:`${km}km Z2`,detail:z2ref.text}]};
       remaining -= km;
     }
   });
@@ -4224,9 +4363,9 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   restOffDays.forEach(d=>{
     if(remaining<=0) return;
     const km = Math.max(5, parseFloat((remaining/(restOffDays.length||1)).toFixed(1)));
-    d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:'6:20–6:40',
-      desc:`${km}km Z2 · pace 6:20–6:40 · FC <140bpm`,
-      steps:[{icon:'🏃',text:`${km}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}]};
+    d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:z2ref.pace,
+      desc:`${km}km Z2 · ${z2ref.text}`,
+      steps:[{icon:'🏃',text:`${km}km Z2`,detail:z2ref.text}]};
     remaining -= km;
   });
 
@@ -4359,12 +4498,17 @@ function openDayDrawer(dateStr) {
 function buildStepsFromType(w) {
   const type = w.type;
   const dist = w.dist||0;
-  if(type==='long') return [
-    {icon:'🔥',text:`Aquecimento 2km leve`,detail:'pace >7:00'},
-    {icon:'🏃',text:`${Math.max(0,dist-4)}km em Z2`,detail:'pace 6:20–6:45 · FC <145bpm'},
-    {icon:'⬆️',text:'Últimos 2km progressivos',detail:'se estiver bem'},
-    {icon:'💧',text:'Hidrate a cada 20min',detail:''}
-  ];
+  if(type==='long') {
+    // v1.0 (Zone Engine Commit 2): pace/FC do trecho em Z2 vem de
+    // getZ2Reference() — nunca mais fixo em "6:20-6:45 · FC <145bpm".
+    const z2ref = getZ2Reference();
+    return [
+      {icon:'🔥',text:`Aquecimento 2km leve`,detail:'pace >7:00'},
+      {icon:'🏃',text:`${Math.max(0,dist-4)}km em Z2`,detail:z2ref.text},
+      {icon:'⬆️',text:'Últimos 2km progressivos',detail:'se estiver bem'},
+      {icon:'💧',text:'Hidrate a cada 20min',detail:''}
+    ];
+  }
   if(type==='interval') return [
     {icon:'🔥',text:'Aquecimento 2km',detail:''},
     {icon:'⚡',text:'6–8x1km forte',detail:'pace 5:00–5:15'},
@@ -4386,7 +4530,7 @@ function buildStepsFromType(w) {
     const idx = getNextStrengthSession();
     return STRENGTH_SESSIONS[idx].steps;
   }
-  if(type==='z2') return [{icon:'🏃',text:`${dist}km Z2`,detail:'pace 6:20–6:40 · FC <140bpm'}];
+  if(type==='z2') return [{icon:'🏃',text:`${dist}km Z2`,detail:getZ2Reference().text}];
   if(type==='bike') return [{icon:'🚴',text:'Bike Z2',detail:'cadência 80–90rpm'},{icon:'🧘',text:'Alongamento pós',detail:''}];
   if(type==='swim') return [{icon:'🏊',text:'Natação',detail:'técnica + resistência'}];
   if(type==='recovery') return [{icon:'🚶',text:'Atividade leve',detail:'caminhada ou trote muito leve'}];
@@ -4917,7 +5061,12 @@ const mockResponses = [
   { keys:['o que é o planner','o que e o planner','pra que serve o planner'],
     reply(){ return `Planner é onde você monta e visualiza o treino da semana (ou da próxima semana), com calendário e distribuição de km por dia.`; }},
   { keys:['z2','base aeróbica','aerobico','aeróbico'],
-    reply(c){ return `Z2 é a base de tudo. Com ${c.wkm}km esta semana e prontidão ${c.rs}/100, o Z2 certo está em FC <140bpm — se não consegue falar frases completas, está rápido demais. No seu caso com ${c.days} dias para a prova, 70–80% do volume deve ser Z2.`; }},
+    reply(c){
+      // v1.0 (Zone Engine Commit 2): FC/pace de Z2 vêm de getZ2Reference() —
+      // antes sempre dizia "FC <140bpm" independente de qualquer dado real.
+      const z2ref = getZ2Reference();
+      return `Z2 é a base de tudo. Com ${c.wkm}km esta semana e prontidão ${c.rs}/100, o Z2 certo está em ${z2ref.text} — se não consegue falar frases completas, está rápido demais. No seu caso com ${c.days} dias para a prova, 70–80% do volume deve ser Z2.`;
+    }},
   { keys:['joelho','lesão','lesao','dor','articular'],
     reply(){ return `Dor articular = parar e avaliar antes de continuar. Protocolo: reduza volume 30% por 3–5 dias, substitua corrida por bike ou natação, fortaleça glúteos e core. Se passar de 72h sem melhora: fisiatra. Não heróe — uma semana de ajuste vale mais que 3 semanas de recuperação.`; }},
   { keys:['longão','longao','longo','long'],
@@ -4943,7 +5092,7 @@ const mockResponses = [
   { keys:['fadiga','cansado','sobretreinamento','overtraining'],
     reply(c){ return `Prontidão atual: ${c.rs}/100. ${c.rs<50?'Sinal claro de que precisa de recuperação. 1–2 dias OFF ou atividade muito leve (bike 30min, caminhada).':c.rs<70?'Atenção: treine mas reduza intensidade hoje.':'Você está bem para treinar.'} Lembra: o crescimento acontece na recuperação. Dormir 7–8h é parte do treino.`; }},
   { keys:['amanhã','amanha','hoje','treino'],
-    reply(c){ const isW=c.tomorrowIsWork; return `Amanhã é ${isW?'dia de TRABALHO':'dia de FOLGA'}. ${isW?'Sugestão: musculação de manhã (40min, foco em core e glúteos) + corrida Z2 à noite (8–10km, FC <140bpm).':'Ótimo para treino de qualidade. Sugestão: progressivo 12–14km ou tiros, dependendo do seu nível de fadiga.'} Prontidão atual: ${c.rs}/100.`; }},
+    reply(c){ const isW=c.tomorrowIsWork; const z2ref=getZ2Reference(); return `Amanhã é ${isW?'dia de TRABALHO':'dia de FOLGA'}. ${isW?`Sugestão: musculação de manhã (40min, foco em core e glúteos) + corrida Z2 à noite (8–10km, ${z2ref.text}).`:'Ótimo para treino de qualidade. Sugestão: progressivo 12–14km ou tiros, dependendo do seu nível de fadiga.'} Prontidão atual: ${c.rs}/100.`; }},
   { keys:['progresso','evolução','evolucao','como estou'],
     reply(c){
       // v1.0 (Commit 4): "Previsão maratona" trocado por label real da prova —
