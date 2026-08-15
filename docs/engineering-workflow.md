@@ -37,7 +37,7 @@ Este documento define o fluxo oficial de engenharia do Pacemaker para a fase de 
 - Nao usar credenciais de producao para testar fluxos inseguros em Preview. OAuth e variaveis de ambiente devem respeitar a separacao definida para cada ambiente.
 - O procedimento de rollback deve apontar para o deployment anterior conhecido como saudavel.
 
-> A configuracao efetiva de Production Branch, Preview Deployments, ambientes e rollback no painel Vercel ainda deve ser verificada/configurada na Issue #2.
+> A configuracao efetiva de Production Branch, Preview Deployments, ambientes e rollback no painel Vercel ainda deve ser verificada/configurada na Issue #5.
 
 ## Pull Request
 
@@ -77,7 +77,7 @@ Uma excecao a qualquer item deve ser registrada no PR, com risco aceito, respons
 
 | Pratica ou ferramenta | Situacao real | Como atua no workflow |
 | --- | --- | --- |
-| GitHub Issues | Adotado. O backlog de preparacao para testers esta registrado nas Issues #1 a #24. | Toda unidade de trabalho nasce em uma Issue e e ligada ao PR. |
+| GitHub Issues | Adotado. O backlog de preparacao para testers esta registrado nas Issues #4 a #27. | Toda unidade de trabalho nasce em uma Issue e e ligada ao PR. |
 | Pull Request + revisao | Adotado como politica deste documento. | Todo trabalho versionado deve passar por PR antes de chegar a `main`. A protecao tecnica da branch ainda esta pendente. |
 | Validacao manual em Preview | Adotado como criterio de processo. | O responsavel registra no PR a URL/resultado da validacao antes do merge. |
 | Documentacao de contratos e riscos | Ja existente em `docs/contract-inventory.md`, `docs/contract-freeze.md` e `docs/migration-risk-register.md`. | Serve de referencia para regressao manual enquanto a cobertura automatizada nao existe. |
@@ -87,24 +87,24 @@ Uma excecao a qualquer item deve ser registrada no PR, com risco aceito, respons
 
 | Ferramenta ou gate | Issue | Estado atual |
 | --- | --- | --- |
-| ESLint e Prettier com scripts reprodutiveis | #7 | Planejado; nao ha `package.json`, ESLint ou Prettier no repositorio hoje. |
-| GitHub Actions para lint e formatacao | #8 | Planejado; nao existe `.github/workflows` hoje. |
-| Smoke tests automatizados | #9 | Planejado; nao ha suite automatizada hoje. |
-| Observabilidade de erros com identificacao de release | #11 | Planejado; nao ha rastreador de erros configurado hoje. |
-| Playwright E2E com mocks | #17 | Planejado; Playwright nao esta configurado hoje. |
-| Testes unitarios da logica critica | #18 | Planejado; a logica ainda esta majoritariamente no `index.html`. |
-| Changelog e processo de release | #19 | Planejado; nao ha changelog/processo versionado hoje. |
-| Cobertura, performance e auditoria de dependencias no CI | #24 | Planejado; nao ha gate desse tipo hoje. |
+| ESLint e Prettier com scripts reprodutiveis | #10 | Planejado; nao ha `package.json`, ESLint ou Prettier no repositorio hoje. |
+| GitHub Actions para lint e formatacao | #11 | A fundacao minima existe no checkout e se torna ativa quando enviada ao GitHub; lint e formatacao continuam planejados na Issue #10. |
+| Smoke tests automatizados | #12 | Planejado; nao ha suite automatizada hoje. |
+| Observabilidade de erros com identificacao de release | #14 | Planejado; nao ha rastreador de erros configurado hoje. |
+| Playwright E2E com mocks | #20 | Planejado; Playwright nao esta configurado hoje. |
+| Testes unitarios da logica critica | #21 | Planejado; a logica ainda esta majoritariamente no `index.html`. |
+| Changelog e processo de release | #22 | Documentacao inicial adicionada; a operacao deve ser validada em uma release futura. |
+| Cobertura, performance e auditoria de dependencias no CI | #27 | Planejado; nao ha gate desse tipo hoje. |
 
 ### A configurar antes de depender do gate
 
 | Controle | Issue | Condicao para ser considerado ativo |
 | --- | --- | --- |
-| Protecao de `main` e checks obrigatorios | #1 | A regra do GitHub deve estar ativa e os checks devem bloquear merge quando falharem. |
-| Production em `main`, Preview por PR e rollback na Vercel | #2 | A configuracao precisa ser confirmada no painel Vercel e exercitada em PR de teste. |
-| Separacao de variaveis por ambiente | #3 | Os escopos Preview/Production devem estar inventariados e validados sem expor segredos. |
-| Politica segura de CORS e OAuth do Strava | #4 e #5 | A allowlist e o fluxo de Preview devem ser implementados/testados antes de testers externos. |
-| Regras de acesso Firebase | #6 | As regras devem ser auditadas, aplicadas e testadas com usuarios distintos. |
+| Protecao de `main` e checks obrigatorios | #4 | A regra do GitHub deve estar ativa e os checks devem bloquear merge quando falharem. |
+| Production em `main`, Preview por PR e rollback na Vercel | #5 | A configuracao precisa ser confirmada no painel Vercel e exercitada em PR de teste. |
+| Separacao de variaveis por ambiente | #6 | Os escopos Preview/Production devem estar inventariados e validados sem expor segredos. |
+| Politica segura de CORS e OAuth do Strava | #7 e #8 | A allowlist e o fluxo de Preview devem ser implementados/testados antes de testers externos. |
+| Regras de acesso Firebase | #9 | As regras devem ser auditadas, aplicadas e testadas com usuarios distintos. |
 
 Enquanto um item estiver em **planejado** ou **a configurar**, ele nao pode ser citado no PR como check automatico ou controle ja configurado. O PR deve registrar a validacao manual alternativa aplicavel.
 
@@ -114,3 +114,7 @@ Enquanto um item estiver em **planejado** ou **a configurar**, ele nao pode ser 
 - [Inventario de contratos](contract-inventory.md)
 - [Congelamento de contratos](contract-freeze.md)
 - [Registro de riscos de migracao](migration-risk-register.md)
+- [Contribuicao](../CONTRIBUTING.md)
+- [Politica de seguranca](../SECURITY.md)
+- [Release e rollback](release-and-rollback.md)
+- [Reporte de bugs por testers](tester-bug-reporting.md)
