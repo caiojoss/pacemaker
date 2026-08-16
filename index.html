@@ -146,8 +146,16 @@ onAuthStateChanged(fbAuth, user => {
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
   --bg:#0a0a0f;--surface:#111118;--surface2:#18181f;--surface3:#1e1e28;
-  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);--border3:rgba(255,255,255,0.2);
-  --text:#f0eff8;--text2:rgba(240,239,248,0.55);--text3:rgba(240,239,248,0.3);
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.15);--border3:rgba(255,255,255,0.2);
+  --text:#f0eff8;--text2:rgba(240,239,248,0.55);
+  /* v1.0 (Design System P0): --text3 subiu de 0.3 → 0.5 de opacidade.
+     0.3 media ~2.4:1 de contraste sobre --bg — abaixo do mínimo WCAG AA
+     (4.5:1) para texto normal. --text3 é usado extensivamente em labels,
+     metadados e timestamps (não é decorativo), então isso não era uma
+     escolha estética, era uma falha de acessibilidade. 0.5 mede ~4.6:1.
+     Isto é uma mudança visual real e esperada — --text3 aparece em quase
+     todo card do app. Requer validação manual (ver checklist de PR). */
+  --text3:rgba(240,239,248,0.5);
   --accent:#e8f55a;--accent-dim:rgba(232,245,90,0.12);
   --blue:#4d9fff;--blue-dim:rgba(77,159,255,0.12);
   --teal:#2ee8c4;--teal-dim:rgba(46,232,196,0.1);
@@ -159,6 +167,111 @@ onAuthStateChanged(fbAuth, user => {
   --r:14px;--r-sm:8px;--r-lg:18px;
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bot:env(safe-area-inset-bottom,0px);
+
+  /* ── v1.0 Design System (P0) — tokens novos, aditivos ──────────────────
+     Nada acima foi removido. Estes tokens coexistem com os valores px
+     "soltos" que ainda estão espalhados pelo CSS (migração é P1, feita
+     seção por seção). Qualquer CSS NOVO a partir de agora usa só o que
+     está abaixo. */
+
+  /* Escala tipográfica — 8 degraus, razão ~1.25 (major third) */
+  --fs-2xs: 9px;
+  --fs-xs:  10px;
+  --fs-sm:  11px;
+  --fs-base:13px;
+  --fs-md:  16px;
+  --fs-lg:  20px;
+  --fs-xl:  25px;
+  --fs-2xl: 31px;
+  --fs-3xl: 39px;
+
+  --fw-body: 500;
+  --fw-label: 600;
+  --fw-display: 700;
+
+  /* Espaçamento — base 4, 6 degraus */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Raio — 3 famílias */
+  --r-control: 8px;   /* chips, inputs, botões pequenos */
+  --r-card: 14px;     /* cards */
+  --r-surface: 22px;  /* modal, drawer — superfícies grandes */
+
+  /* Borda — 2 níveis de opacidade só */
+  --border-rest: rgba(255,255,255,0.07);
+  --border-active: rgba(255,255,255,0.15);
+
+  /* Foco — crítico para acessibilidade de teclado, hoje inexistente */
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  /* Sombra — só para elevação real sobre superfícies (raro no layout atual) */
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-modal: 0 8px 32px rgba(0,0,0,0.45);
+
+  /* Motion — curvas e durações (Emil Kowalski / animate skill).
+     Extensão do que o app já faz em modal/drawer, não um sistema paralelo. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 120ms;
+  --dur-popover: 180ms;
+  --dur-sheet: 280ms;
+}
+
+/* ── v1.0 (Motion P0): spinner de carregamento ──────────────────────────
+   Único indicador de "operação em andamento" reutilizável do app. Hoje
+   isso não existia fora do chat (.typing-dots) — save no Firestore, sync
+   do Strava e a chamada de IA no onboarding (até ~12s) não davam nenhum
+   feedback contínuo. Marcado .motion-loading para ser exceção explícita
+   da regra de prefers-reduced-motion acima. */
+.motion-loading{
+  display:inline-block;width:14px;height:14px;flex-shrink:0;
+  border:2px solid currentColor;border-right-color:transparent;
+  border-radius:50%;opacity:0.85;
+  animation:motion-spin 0.7s linear infinite;
+  vertical-align:-2px;margin-right:6px;
+}
+@keyframes motion-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  .motion-loading{
+    animation:motion-pulse 1.2s ease-in-out infinite;
+    border-right-color:currentColor;
+  }
+  @keyframes motion-pulse{0%,100%{opacity:0.4}50%{opacity:1}}
+}
+
+/* ── v1.0 (P0): foco de teclado global ──────────────────────────────────
+   Hoje só .form-input:focus existe. Todo elemento interativo (botão,
+   card clicável, chip, toggle) precisa de indicação visível de foco por
+   teclado — sem isso, navegar o app sem mouse/touch é praticamente
+   impossível de saber onde você está. :focus-visible (não :focus) evita
+   o anel aparecer em clique de mouse/touch, só em navegação por teclado. */
+:focus-visible{
+  outline:none;
+  box-shadow:var(--focus-ring);
+  border-radius:var(--r-control);
+}
+
+/* ── v1.0 (P0): prefers-reduced-motion global ───────────────────────────
+   Hoje zero cobertura no app. "Reduzido", não "zero": mantém opacidade/cor
+   (ajuda a entender o que mudou), remove movimento/transform.
+   EXCEÇÃO deliberada: .motion-loading (spinners) é excluído deste kill
+   geral — zerar a animação de um spinner faz parecer que o app travou,
+   exatamente o problema oposto do que reduced-motion deveria resolver.
+   Spinners ganham sua própria variante reduzida (pulso de opacidade, sem
+   rotação) em vez de congelar — ver .motion-loading abaixo. */
+@media (prefers-reduced-motion: reduce){
+  *:not(.motion-loading),*:not(.motion-loading)::before,*:not(.motion-loading)::after{
+    animation-duration:0.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:0.01ms!important;
+    scroll-behavior:auto!important;
+  }
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--display);overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%;max-width:480px;margin:0 auto;position:relative}
@@ -223,11 +336,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
   .context-bar-key{color:var(--text3);font-size:10px}
   .context-bar-val{color:var(--text);font-weight:600}
   .mini-bar-wrap{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;margin-top:3px}
-  .mini-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
+  /* v1.0 (Motion P0): width→transform. Sem texto embutido — seguro. */
+  .mini-bar-fill{width:100%;height:100%;border-radius:2px;transform-origin:left;transform:scaleX(0);transition:transform var(--dur-sheet) var(--ease-out)}
 
   /* 8w chart */
   .trend-chart{display:flex;align-items:flex-end;gap:3px;height:60px;margin:8px 0 4px}
   .trend-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px}
+  /* trend-bar-fill: gráfico de barras verticais (cada barra = 1 semana de
+     dado, não um "preenchimento" de progresso) — height aqui representa a
+     própria métrica, não uma % arbitrária. Elementos são recriados via
+     innerHTML a cada render (não há nó persistente entre atualizações),
+     então a transition declarada não chega a animar na prática hoje — não
+     é uma violação de performance real, é CSS morto. Mantido como height
+     por ser semanticamente um gráfico de dados, não um progress bar. */
   .trend-bar-fill{width:100%;border-radius:2px 2px 0 0;transition:height .4s ease;min-height:2px}
   .trend-bar-label{font-family:var(--mono);font-size:7px;color:var(--text3);white-space:nowrap}
 
@@ -358,23 +479,30 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 /* SECTIONS */
 .section{display:none}.section.active{display:block}
 /* CARDS */
-.card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px}
+.card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r-card);padding:var(--sp-4);margin-bottom:var(--sp-3)}
 .card-accent{background:var(--accent-dim);border-color:rgba(232,245,90,0.2)}
 .card-blue{background:var(--blue-dim);border-color:rgba(77,159,255,0.2)}
 .card-teal{background:var(--teal-dim);border-color:rgba(46,232,196,0.2)}
-.label{font-size:9px;font-weight:700;letter-spacing:0.13em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
-.big-num{font-family:var(--mono);font-size:48px;font-weight:800;line-height:1}
-.med-num{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1}
-.small-num{font-family:var(--mono);font-size:16px;font-weight:500}
-.sub{font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:4px}
+.label{font-size:var(--fs-2xs);font-weight:var(--fw-label);letter-spacing:0.13em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
+/* v1.0 (Typography P0): 48px→39px (--fs-3xl, teto da escala de 8 degraus).
+   Mudança visual real no maior número do app — validar com screenshot
+   antes de merge, conforme checklist de PR. */
+.big-num{font-family:var(--mono);font-size:var(--fs-3xl);font-weight:var(--fw-display);line-height:1}
+.med-num{font-family:var(--mono);font-size:var(--fs-xl);font-weight:var(--fw-display);line-height:1}
+.small-num{font-family:var(--mono);font-size:var(--fs-md);font-weight:var(--fw-body)}
+.sub{font-family:var(--mono);font-size:var(--fs-xs);color:var(--text3);margin-top:4px}
 /* GRID */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 /* PROGRESS BAR */
 .pbar-wrap{height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin:10px 0 6px}
-.pbar-fill{height:100%;border-radius:3px;transition:width 0.6s ease}
+/* v1.0 (Motion P0): width→transform. Barra sempre ocupa 100% do wrap;
+   o "preenchimento" visual vem de scaleX, que é GPU-only (transform),
+   ao contrário de width que força layout+paint a cada frame. Ver
+   setBarFill() no JS — todo consumidor usa scaleX agora, nunca width. */
+.pbar-fill{width:100%;height:100%;border-radius:3px;transform-origin:left;transform:scaleX(0);transition:transform var(--dur-sheet) var(--ease-out)}
 /* BADGES */
-.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-family:var(--mono);font-size:10px;font-weight:500;border:0.5px solid}
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-family:var(--mono);font-size:var(--fs-xs);font-weight:var(--fw-body);border:0.5px solid}
 .badge-green{color:var(--green);border-color:rgba(93,214,140,0.3);background:var(--green-dim)}
 .badge-orange{color:var(--orange);border-color:rgba(255,140,66,0.3);background:var(--orange-dim)}
 .badge-blue{color:var(--blue);border-color:rgba(77,159,255,0.3);background:var(--blue-dim)}
@@ -382,7 +510,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .badge-red{color:var(--red);border-color:rgba(255,92,92,0.3);background:var(--red-dim)}
 .badge-purple{color:var(--purple);border-color:rgba(155,126,255,0.3);background:var(--purple-dim)}
 /* BUTTONS */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:var(--r-sm);font-family:var(--display);font-size:13px;font-weight:700;cursor:pointer;transition:all 0.15s;border:none}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border-radius:var(--r-control);font-family:var(--display);font-size:var(--fs-base);font-weight:var(--fw-display);cursor:pointer;transition:transform var(--dur-press) var(--ease-out),opacity var(--dur-press) var(--ease-out),background-color var(--dur-press) var(--ease-out);border:none}
+/* v1.0 (Motion — MUST HAVE): resposta imediata ao toque para TODA variante
+   de botão, não só .btn-primary. Antes .btn-ghost/.btn-danger não tinham
+   nenhum feedback de :active — toque parecia "sem resposta" até o clique
+   completar. */
+.btn:active{transform:scale(0.97)}
 .btn-primary{background:var(--accent);color:#0a0a0f}
 .btn-primary:active{opacity:0.8;transform:scale(0.97)}
 .btn-ghost{background:transparent;color:var(--text2);border:0.5px solid var(--border2)}
@@ -390,6 +523,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .btn.sel{background:var(--accent-dim);color:var(--accent);border-color:rgba(232,245,90,0.4)}
 .btn-full{width:100%;margin-top:10px}
 .btn-danger{background:var(--red-dim);color:var(--red);border:0.5px solid rgba(255,92,92,0.3)}
+.btn-danger:active{background:rgba(255,92,92,0.2)}
 /* FORM ELEMENTS */
 .form-group{margin-bottom:14px}
 .form-label{font-size:10px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;display:block}
@@ -407,15 +541,15 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .rpe-btn{flex:1;background:var(--surface2);border:0.5px solid var(--border);border-radius:6px;color:var(--text3);font-family:var(--mono);font-size:12px;font-weight:500;padding:8px 2px;cursor:pointer;transition:all 0.15s;text-align:center}
 .rpe-btn.sel{background:var(--accent-dim);border-color:rgba(232,245,90,0.4);color:var(--accent)}
 /* SECTION TITLE */
-.section-title{font-size:18px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.section-title{font-size:var(--fs-lg);font-weight:var(--fw-display);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
 /* WORKOUT LIST ITEM */
 .workout-item{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:border-color 0.15s}
 .workout-item:active{border-color:var(--border2)}
 .workout-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
-.workout-item-title{font-size:14px;font-weight:600}
-.workout-item-date{font-family:var(--mono);font-size:10px;color:var(--text3)}
+.workout-item-title{font-size:var(--fs-base);font-weight:var(--fw-label)}
+.workout-item-date{font-family:var(--mono);font-size:var(--fs-xs);color:var(--text3)}
 .workout-item-stats{display:flex;gap:12px;flex-wrap:wrap}
-.wstat{font-family:var(--mono);font-size:11px;color:var(--text2)}
+.wstat{font-family:var(--mono);font-size:var(--fs-sm);color:var(--text2)}
 .wstat strong{color:var(--text);font-weight:500}
 .workout-item-notes{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5;font-family:var(--mono)}
 /* PLANNER */
@@ -486,7 +620,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .readiness-ring svg{transform:rotate(-90deg)}
 .readiness-ring .ring-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:6}
 .readiness-ring .ring-fill{fill:none;stroke-width:6;stroke-linecap:round;transition:stroke-dashoffset 0.8s ease}
-.readiness-val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:18px;font-weight:700}
+.readiness-val{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:var(--fs-md);font-weight:var(--fw-display)}
 /* EMPTY STATE */
 .empty-state{text-align:center;padding:40px 20px;color:var(--text3)}
 .empty-icon{font-size:40px;margin-bottom:12px;opacity:0.5}
@@ -494,11 +628,26 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 /* DIVIDER */
 .divider{height:0.5px;background:var(--border);margin:16px 0}
 /* TOAST */
-#toast{position:fixed;bottom:calc(90px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(20px);background:var(--teal);color:#0a0a0f;padding:10px 18px;border-radius:20px;font-size:12px;font-weight:700;z-index:300;opacity:0;transition:all 0.3s;white-space:nowrap}
+#toast{position:fixed;bottom:calc(90px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(20px);background:var(--teal);color:#0a0a0f;padding:10px 18px;border-radius:20px;font-size:12px;font-weight:700;z-index:300;opacity:0;transition:opacity 0.3s,transform 0.3s,background-color 0.15s;white-space:nowrap}
+/* v1.0 (UX P0): toast diferenciado por tipo — antes, "Treino salvo!" e um
+   erro de sincronização usavam exatamente o mesmo componente verde-teal.
+   Cor volta a ter significado fixo (ver Design System): teal=sucesso,
+   red=erro, blue=informativo neutro. Mesmo componente, mesma posição/
+   motion — só a cor (e o texto, já dinâmico) mudam por tipo. */
+#toast.toast-error{background:var(--red);color:#fff}
+#toast.toast-info{background:var(--blue);color:#0a0a0f}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 /* WEEK SUMMARY */
 .week-bar{height:44px;background:rgba(255,255,255,0.03);border-radius:var(--r-sm);overflow:hidden;position:relative;margin-bottom:6px}
-.week-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue-dim),var(--teal-dim));border-right:2px solid var(--teal);display:flex;align-items:center;padding-left:12px;font-family:var(--mono);font-size:11px;color:var(--teal);transition:width 0.8s ease}
+/* v1.0 (Motion P0) — NOTA DE ENGENHARIA: week-bar-fill contém texto
+   dentro do próprio elemento que preenche (o km atual). scaleX() distorce
+   o texto junto com a barra (squish horizontal), então a correção
+   width→transform aqui exige separar o "preenchimento visual" do "texto"
+   em duas camadas (fill absoluto atrás, texto sempre 100% de largura na
+   frente) — uma mudança estrutural de HTML, não só de CSS. Mantido como
+   width nesta passada P0 para não arriscar quebrar visualmente sem
+   validação manual; ver item de follow-up P1 "week-bar 2-layer fill". */
+.week-bar-fill{height:100%;background:linear-gradient(90deg,var(--blue-dim),var(--teal-dim));border-right:2px solid var(--teal);display:flex;align-items:center;padding-left:12px;font-family:var(--mono);font-size:11px;color:var(--teal);transition:width var(--dur-sheet) var(--ease-out)}
 /* COACH COLOR */
 .coach-context{background:var(--teal-dim);border:0.5px solid rgba(46,232,196,0.2);border-radius:var(--r-sm);padding:10px 14px;font-size:11px;color:var(--text2);font-family:var(--mono);margin-bottom:12px;line-height:1.6}
 /* OVERFLOW MENU */
@@ -506,8 +655,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 .overflow-menu-wrap{position:relative}
 .overflow-btn{background:none;border:0.5px solid var(--border2);border-radius:6px;color:var(--text2);width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;line-height:1;transition:all 0.15s;flex-shrink:0}
 .overflow-btn:active{background:var(--surface2);color:var(--text)}
-.overflow-menu{position:absolute;top:32px;right:0;background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r);min-width:200px;z-index:50;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.4);display:none}
-.overflow-menu.open{display:block}
+/* v1.0 (Motion — SHOULD HAVE): overflow-menu antes teleportava via
+   display:none→block (categoria "sem ponte visual" da auditoria de
+   motion). Agora entra/sai a partir do próprio botão que o abriu
+   (transform-origin no canto onde o menu nasce), scale+opacity,
+   180ms — duração de popover (--dur-popover), não de sheet. */
+.overflow-menu{position:absolute;top:32px;right:0;background:var(--surface2);border:0.5px solid var(--border2);border-radius:var(--r);min-width:200px;z-index:50;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  opacity:0;transform:scale(0.94);transform-origin:top right;pointer-events:none;
+  transition:opacity var(--dur-popover) var(--ease-out),transform var(--dur-popover) var(--ease-out);
+}
+.overflow-menu.open{opacity:1;transform:scale(1);pointer-events:auto}
 .overflow-item{display:flex;align-items:center;gap:10px;padding:13px 16px;font-family:var(--display);font-size:13px;font-weight:500;color:var(--text2);cursor:pointer;transition:background 0.1s;border:none;background:none;width:100%;text-align:left}
 .overflow-item:active{background:var(--surface3);color:var(--text)}
 .overflow-item.danger{color:var(--red)}
@@ -577,7 +734,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 /* TOGGLE */
 .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
 .toggle-label{font-size:12px;color:var(--text2)}
-.toggle{width:40px;height:22px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:11px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0}
+/* v1.0 (A11y P0): .toggle agora é aplicado a <button role="switch">, não
+   mais <div onclick>. Reset de estilo de botão nativo (padding/border/
+   font herdada) para preservar o visual exato de antes — só a semântica
+   mudou (foco por teclado, Enter/Espaço ativam, leitor de tela anuncia
+   estado via aria-checked). */
+.toggle{width:40px;height:22px;background:var(--surface2);border:0.5px solid var(--border2);border-radius:11px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0;padding:0;font:inherit;-webkit-appearance:none;appearance:none}
 .toggle.on{background:var(--accent)}
 .toggle-thumb{width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:1px;left:1px;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
 .toggle.on .toggle-thumb{transform:translateX(18px)}
@@ -765,7 +927,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           </div>
         </div>
         <div class="pbar-wrap">
-          <div class="pbar-fill" id="db-sub4-bar" style="width:0%;background:linear-gradient(90deg,var(--purple),var(--blue))"></div>
+          <div class="pbar-fill" id="db-sub4-bar" style="transform:scaleX(0);background:linear-gradient(90deg,var(--purple),var(--blue))"></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3)">
           <span>Início</span><span id="db-gap-closed">Gap a fechar</span><span id="db-goal-progress-end-label">Meta</span>
@@ -888,7 +1050,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <span class="badge badge-orange" id="race-gap-badge">--</span>
         </div>
         <div class="pbar-wrap" style="height:8px">
-          <div class="pbar-fill" id="race-gap-bar" style="width:0%;background:linear-gradient(90deg,var(--red),var(--orange),var(--accent))"></div>
+          <div class="pbar-fill" id="race-gap-bar" style="transform:scaleX(0);background:linear-gradient(90deg,var(--red),var(--orange),var(--accent))"></div>
         </div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px" id="race-gap-desc"></div>
       </div>
@@ -981,7 +1143,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           </div>
           <div class="toggle-row" style="margin-bottom:10px">
             <span class="toggle-label">Usar semana passada como referência</span>
-            <div class="toggle" id="toggle-ref" onclick="toggleRef()"><div class="toggle-thumb"></div></div>
+            <button type="button" class="toggle" id="toggle-ref" role="switch" aria-checked="false" aria-label="Usar semana passada como referência" onclick="toggleRef()"><div class="toggle-thumb"></div></button>
           </div>
           <div class="form-group" style="margin-bottom:12px">
             <label class="form-label">Algo específico? (opcional)</label>
@@ -1367,7 +1529,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       </div>
       <div class="toggle-row" style="margin-bottom:12px">
         <span class="toggle-label" style="font-size:11px">Reequilibrar volume semanal após editar</span>
-        <div class="toggle on" id="toggle-rebalance" onclick="this.classList.toggle('on')"><div class="toggle-thumb"></div></div>
+        <button type="button" class="toggle on" id="toggle-rebalance" role="switch" aria-checked="true" aria-label="Reequilibrar volume semanal após editar" onclick="this.classList.toggle('on');this.setAttribute('aria-checked', this.classList.contains('on'))"><div class="toggle-thumb"></div></button>
       </div>
       <div class="drawer-actions">
         <button class="btn btn-ghost" style="flex:1;font-size:12px" onclick="hideDrawerEdit()">← Voltar</button>
@@ -1926,9 +2088,30 @@ function typeLabel(t, w) {
 function typeChipClass(t) {
   return {z2:'wchip-z2',interval:'wchip-interval',long:'wchip-long',progressivo:'wchip-tempo',tempo:'wchip-tempo',strength:'wchip-strength',bike:'wchip-z2',swim:'wchip-z2',recovery:'wchip-rest'}[t]||'wchip-rest';
 }
-function showToast(msg) {
-  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+// v1.0 (UX P0): showToast agora aceita um type opcional ('success'|'error'|'info').
+// Default 'success' preserva 100% do comportamento/visual de todas as ~50
+// chamadas existentes no código — nenhuma precisa ser tocada para continuar
+// funcionando exatamente como antes. Erros de verdade (Strava, Gemini, sync)
+// passam 'error' explicitamente nos pontos já mapeados na auditoria.
+function showToast(msg, type='success') {
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.classList.remove('toast-error','toast-info');
+  if(type==='error') t.classList.add('toast-error');
+  else if(type==='info') t.classList.add('toast-info');
+  t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2200);
+}
+// v1.0 (Motion P0): setter único para barras .pbar-fill/.mini-bar-fill/.ob-progress-bar,
+// que usam transform:scaleX() em vez de width (GPU-only — ver auditoria de motion).
+// NÃO usar para .week-bar-fill: esse elemento tem texto dentro do próprio fill,
+// e scaleX() distorceria o texto junto com a barra — aquele continua em width
+// deliberadamente (ver comentário no CSS de .week-bar-fill).
+function setBarFill(id, pct) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  const clamped = Math.max(0, Math.min(100, pct));
+  el.style.transform = `scaleX(${clamped/100})`;
 }
 function isWorkDay(dateStr) {
   if(!state.config.scaleStart) return [1,2].includes(new Date(dateStr+'T12:00:00').getDay());
@@ -2311,12 +2494,12 @@ function renderDashboardBase() {
         // à meta atual, não mais um valor fixo de 5h30 calibrado só pra maratona.
         const worstSec = targetSecDb * 1.45;
         const gapClosed = Math.max(0,Math.min(100,(worstSec-pred)/(worstSec-targetSecDb)*100));
-        document.getElementById('db-sub4-bar').style.width = gapClosed+'%';
+        setBarFill('db-sub4-bar', gapClosed);
         document.getElementById('db-gap-closed').textContent = gapClosed.toFixed(0)+'% do gap fechado';
         if(pred<=targetSecDb) document.getElementById('db-sub4-badge').textContent='✓ Meta alcançada!';
         else document.getElementById('db-sub4-badge').textContent='Em progresso';
       } else {
-        document.getElementById('db-sub4-bar').style.width = '0%';
+        setBarFill('db-sub4-bar', 0);
         document.getElementById('db-gap-closed').textContent = 'Defina um tempo alvo na Memória do Atleta';
       }
     } else {
@@ -3183,16 +3366,16 @@ function renderRaceIQ() {
         // (45% mais lento que o alvo) — antes era um valor fixo de 2.5h,
         // calibrado só pra escala de tempos de maratona.
         const worstGap = targetSec * 0.45;
-        document.getElementById('race-gap-bar').style.width = Math.min(100, Math.max(5, (1-(gap/worstGap))*100))+'%';
+        setBarFill('race-gap-bar', Math.min(100, Math.max(5, (1-(gap/worstGap))*100)));
         document.getElementById('race-gap-desc').textContent = `Faltam ${gapMin} minutos para a meta. Baseado em ${realLongoes.length} longão(s) real(is).`;
       } else {
         document.getElementById('race-gap-badge').textContent = '✓ Meta batida!';
-        document.getElementById('race-gap-bar').style.width = '100%';
+        setBarFill('race-gap-bar', 100);
         document.getElementById('race-gap-desc').textContent = 'Previsão dentro da meta com base nos seus longões reais!';
       }
     } else {
       document.getElementById('race-gap-badge').textContent = 'Defina uma meta';
-      document.getElementById('race-gap-bar').style.width = '0%';
+      setBarFill('race-gap-bar', 0);
       document.getElementById('race-gap-desc').textContent = 'Defina um tempo alvo na Memória do Atleta para calcular o gap.';
     }
     document.getElementById('race-basis').textContent =
@@ -3452,7 +3635,7 @@ async function adminSaveGeminiConfig() {
     showToast('Config do Gemini atualizada para todos os usuários ✓');
   } catch(e) {
     if(saveStatus) { saveStatus.textContent = `Erro: ${e.message}`; saveStatus.style.color='var(--red)'; }
-    showToast('Erro ao salvar: ' + e.message);
+    showToast('Erro ao salvar: ' + e.message, 'error');
   }
 }
 
@@ -3964,7 +4147,7 @@ let useLastWeekRef = false;
 function toggleRef() {
   useLastWeekRef = !useLastWeekRef;
   const el = document.getElementById('toggle-ref');
-  if(el) el.classList.toggle('on', useLastWeekRef);
+  if(el) { el.classList.toggle('on', useLastWeekRef); el.setAttribute('aria-checked', String(useLastWeekRef)); }
 }
 
 function togglePlanSection() {
@@ -5357,7 +5540,7 @@ function restoreFromTestBackup() {
     document.getElementById('screen-first-plan')?.classList.add('hidden');
     goTo('sec-dashboard');
   } catch(e) {
-    showToast('Erro ao restaurar backup');
+    showToast('Erro ao restaurar backup', 'error');
     console.error(e);
   }
 }
@@ -5453,7 +5636,7 @@ async function handleStravaCallback() {
   if(error) {
     // User denied or error — clean URL and show message
     window.history.replaceState({}, document.title, window.location.pathname);
-    showToast('Strava: autorização negada');
+    showToast('Strava: autorização negada', 'error');
     return;
   }
   if(!code) return; // No OAuth callback, normal load
@@ -5508,10 +5691,10 @@ async function exchangeStravaCode(code) {
       // Nunca logamos o corpo inteiro (poderia, em tese, ecoar algo sensível
       // vindo de uma resposta inesperada) — só a mensagem de erro, se houver.
       console.error('Strava token error:', data?.message || `HTTP ${res.status}`);
-      showToast('Erro: ' + (data?.message || 'Não foi possível conectar ao Strava.'));
+      showToast('Erro: ' + (data?.message || 'Não foi possível conectar ao Strava.'), 'error');
     }
   } catch(e) {
-    showToast('Erro de conexão com Strava');
+    showToast('Erro de conexão com Strava', 'error');
     console.error('Strava exchange failed:', e.message);
   }
 }
@@ -5573,7 +5756,7 @@ let stravaSelectedIds = new Set();
 
 async function stravaSync() {
   const token = await refreshStravaToken();
-  if(!token) { showToast('Sessão expirada. Reconecte o Strava.'); return; }
+  if(!token) { showToast('Sessão expirada. Reconecte o Strava.', 'error'); return; }
 
   showToast('Buscando atividades...');
   stravaActivitiesCache = [];
@@ -5598,7 +5781,7 @@ async function stravaSync() {
     renderStravaImportModal(acts);
     openModal('modal-strava');
   } catch(e) {
-    showToast('Erro ao buscar atividades: ' + e.message);
+    showToast('Erro ao buscar atividades: ' + e.message, 'error');
     console.error(e);
   }
 }
@@ -5975,7 +6158,7 @@ async function firebaseLogin() {
   } catch(e) {
     console.error('Login error:', e);
     setSyncStatus('error', 'Login cancelado');
-    showToast('Login cancelado');
+    showToast('Login cancelado', 'error');
   }
 }
 
@@ -6135,7 +6318,7 @@ async function downloadFromCloud() {
 async function syncNow() {
   if(!state.user) { showToast('Faça login primeiro'); return; }
   await uploadToCloud();
-  showToast(_syncStatus === 'synced' ? '☁️ Sincronizado!' : '⚠️ Erro de sincronização');
+  showToast(_syncStatus === 'synced' ? '☁️ Sincronizado!' : '⚠️ Erro de sincronização', _syncStatus === 'synced' ? 'success' : 'error');
 }
 
 // Phase D — Migration detection (legacy pacemaker_v2 → pacemaker_<uid>)
@@ -6176,7 +6359,7 @@ function checkMigration() {
       localStorage.removeItem(DB_KEY_LEGACY);
       showToast('✓ Dados migrados e sincronizados!');
       renderDashboard(); renderLog(); renderPlanner();
-    }).catch(() => showToast('⚠️ Migração salva localmente — tente sincronizar novamente'));
+    }).catch(() => showToast('⚠️ Migração salva localmente — tente sincronizar novamente', 'error'));
   } else {
     // User chose to stay local — write legacy data to UID key so it's not lost
     localStorage.setItem(uidKey, legacyRaw);
@@ -6320,7 +6503,7 @@ function updateRightPanel() {
         <span class="context-bar-key">Prontidão</span>
         <span class="context-bar-val" style="color:${c.rs>=70?'var(--teal)':c.rs>=50?'var(--orange)':'var(--red)'}">${c.rs}/100</span>
       </div>
-      <div class="mini-bar-wrap"><div class="mini-bar-fill" style="width:${c.rs}%;background:${c.rs>=70?'var(--teal)':'var(--orange)'}"></div></div>
+      <div class="mini-bar-wrap"><div class="mini-bar-fill" style="transform:scaleX(${c.rs/100});background:${c.rs>=70?'var(--teal)':'var(--orange)'}"></div></div>
       <div class="context-bar-item" style="margin-top:6px">
         <span class="context-bar-key">Fadiga recente</span>
         <span class="context-bar-val" style="color:${fatigueColor}">${fatigueLabel} (${c.fatigueTrend||'--'}/5)</span>
@@ -6345,7 +6528,7 @@ function updateRightPanel() {
             <span style="font-family:var(--mono);font-size:9px;color:var(--text2)">${w.adherence}%</span>
           </div>
           <div class="mini-bar-wrap">
-            <div class="mini-bar-fill" style="width:${w.adherence}%;background:${w.adherence>=80?'var(--teal)':w.adherence>=60?'var(--orange)':'var(--red)'}"></div>
+            <div class="mini-bar-fill" style="transform:scaleX(${w.adherence/100});background:${w.adherence>=80?'var(--teal)':w.adherence>=60?'var(--orange)':'var(--red)'}"></div>
           </div>
         </div>`).join('')}
     </div>
@@ -6472,7 +6655,7 @@ function renderWeeklyReports() {
         <span>Aderência ao plano</span><span style="color:${adhColor}">${w.adherence}%</span>
       </div>
       <div class="mini-bar-wrap" style="height:5px">
-        <div class="mini-bar-fill" style="width:${w.adherence}%;background:${adhColor}"></div>
+        <div class="mini-bar-fill" style="transform:scaleX(${w.adherence/100});background:${adhColor}"></div>
       </div>
     </div>`;
   }).join('');
@@ -6850,8 +7033,9 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
   height:3px;background:var(--surface2);flex-shrink:0;
 }
 .ob-progress-bar {
-  height:100%;background:var(--accent);border-radius:2px;
-  transition:width .35s ease;
+  width:100%;height:100%;background:var(--accent);border-radius:2px;
+  transform-origin:left;transform:scaleX(0);
+  transition:transform var(--dur-sheet) var(--ease-out);
 }
 
 /* Step container */
@@ -6900,27 +7084,27 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
 
 /* Step content */
 .ob-eyebrow {
-  font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  font-family:var(--mono);font-size:var(--fs-xs);letter-spacing:.14em;
   text-transform:uppercase;color:var(--accent);margin-bottom:10px;
 }
 .ob-title {
-  font-family:var(--display);font-size:26px;font-weight:800;
+  font-family:var(--display);font-size:var(--fs-xl);font-weight:var(--fw-display);
   line-height:1.2;margin-bottom:8px;
 }
 .ob-sub {
-  font-family:var(--mono);font-size:12px;color:var(--text3);
+  font-family:var(--mono);font-size:var(--fs-base);color:var(--text3);
   margin-bottom:28px;line-height:1.6;
 }
 .ob-field { margin-bottom:16px; }
 .ob-label {
-  font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  font-family:var(--mono);font-size:var(--fs-xs);letter-spacing:.1em;
   text-transform:uppercase;color:var(--text3);margin-bottom:6px;
 }
 .ob-input {
   width:100%;padding:13px 14px;
   background:var(--surface2);border:1px solid var(--border2);
-  border-radius:var(--r-sm);color:var(--text);
-  font-family:var(--mono);font-size:15px;
+  border-radius:var(--r-control);color:var(--text);
+  font-family:var(--mono);font-size:var(--fs-md);
   transition:border-color .15s;
 }
 .ob-input:focus { outline:none;border-color:var(--accent); }
@@ -6931,7 +7115,7 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
 .ob-chip {
   padding:10px 16px;border-radius:20px;
   border:1px solid var(--border2);background:var(--surface2);
-  font-family:var(--mono);font-size:12px;color:var(--text2);
+  font-family:var(--mono);font-size:var(--fs-sm);color:var(--text2);
   cursor:pointer;transition:all .15s;
 }
 .ob-chip:hover { border-color:var(--accent);color:var(--accent); }
@@ -6993,11 +7177,11 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
   to{transform:scale(1);opacity:1}
 }
 .fp-title {
-  font-family:var(--display);font-size:24px;font-weight:800;
+  font-family:var(--display);font-size:var(--fs-xl);font-weight:var(--fw-display);
   margin-bottom:10px;
 }
 .fp-sub {
-  font-family:var(--mono);font-size:12px;color:var(--text3);
+  font-family:var(--mono);font-size:var(--fs-base);color:var(--text3);
   line-height:1.7;margin-bottom:32px;
 }
 .fp-plan-preview {
@@ -7025,7 +7209,7 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
 <!-- ── ONBOARDING SCREEN ──────────────────────────────────── -->
 <div id="screen-onboarding" class="hidden">
   <div class="ob-progress-wrap">
-    <div class="ob-progress-bar" id="ob-progress" style="width:0%"></div>
+    <div class="ob-progress-bar" id="ob-progress" style="transform:scaleX(0)"></div>
   </div>
 
   <div class="ob-steps">
@@ -7274,7 +7458,7 @@ function hideOnboarding() {
 // concorrente do Firestore.
 async function obLoginExisting() {
   const btn = document.getElementById('ob-btn-login-existing');
-  if(btn) { btn.disabled = true; btn.textContent = '⏳ Entrando...'; }
+  if(btn) { btn.disabled = true; btn.innerHTML = '<span class="motion-loading" role="status" aria-label="Carregando"></span>Entrando...'; }
 
   await firebaseLogin(); // dispara o popup do Google; erros são tratados e exibidos
                           // internamente por firebaseLogin() (toast), sem rejeitar a Promise
@@ -7326,7 +7510,7 @@ async function obLoginExisting() {
 function renderObStep(step) {
   // Progress bar
   const pct = step === 0 ? 5 : Math.round((step / (OB_TOTAL_STEPS - 1)) * 100);
-  document.getElementById('ob-progress').style.width = pct + '%';
+  setBarFill('ob-progress', pct);
 
   // Show/hide steps
   document.querySelectorAll('.ob-step').forEach(el => {
@@ -7592,10 +7776,17 @@ function calcMonthGoalFromWeek(weekKm) {
 }
 
 // ── Finish & save ─────────────────────────────────────────
+// v1.0 (Motion P0): substitui o texto do botão por spinner+texto — antes
+// disso, a única mudança visual durante os até ~12s da chamada de IA era
+// o texto trocando uma vez. Ver .motion-loading no CSS.
+function setObBtnLoading(btn, text) {
+  btn.innerHTML = `<span class="motion-loading" role="status" aria-label="Carregando"></span>${text}`;
+}
+
 async function finishOnboarding() {
   const btn = document.getElementById('ob-btn-next');
   btn.disabled = true;
-  btn.textContent = '🧠 Coach analisando seu perfil...';
+  setObBtnLoading(btn, 'Coach analisando seu perfil...');
 
   const weekKm = calcWeekGoalFromProfile(_obData);
   const monthKm = calcMonthGoalFromWeek(weekKm);
@@ -7645,7 +7836,7 @@ async function finishOnboarding() {
   const aiAvailable = AI_BACKEND_MODE === 'FIREBASE_BACKEND' ? !!state.user : hasGeminiKey();
   let aiPlan = null;
   if(aiAvailable) {
-    btn.textContent = '✨ Coach preparando seu plano...';
+    setObBtnLoading(btn, 'Coach preparando seu plano...');
     // v0.9.2.2 (P1): reaproveita a MESMA chamada já disparada em renderObSummary()
     // (e mostrada no preview "Seu Coach está pronto"), em vez de gerar uma segunda
     // estratégia que poderia divergir. Se por algum motivo não houver promise em
