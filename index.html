@@ -3877,6 +3877,11 @@ ${raceLine}
 - Lesões/Histórico: ${p.injuryHistory || 'não informado'}
 - Observações do atleta: ${p.notes || 'nenhuma observação'}
 ${strategyBlock}
+CALENDÁRIO REAL DA SEMANA EM PLANEJAMENTO — fonte: isWorkDay(), já calculado pelo sistema.
+NUNCA infira ou recalcule trabalho/folga a partir do tipo de escala (ex: "2x2") — use exatamente os
+dias abaixo, tal como estão, mesmo que pareçam não seguir um padrão simples de alternância:
+${c.weekScheduleText}
+
 CONTEXTO DE EVOLUÇÃO (8 SEMANAS):
 ${evolution}
 
@@ -3907,7 +3912,7 @@ ${isHealthGoal ? '' : '- Se dias para a prova <= 14: enforça taper independente
 - Justifique cada recomendação com dados reais do histórico
 - Dê números exatos: distância, pace, FC, séries, recuperação
 - Máximo 4 parágrafos por resposta
-- Considere sempre a rotina de trabalho do atleta (${scaleDesc}) ao sugerir treinos
+- Considere sempre o CALENDÁRIO REAL DA SEMANA acima (nunca a descrição genérica da escala) ao dizer se um dia é de trabalho ou folga, ou ao sugerir treinos para dias específicos
 
 CONHECIMENTO SOBRE O APP PACEMAKER (v1.0):
 Você também é o especialista no próprio aplicativo. Quando o atleta perguntar "como faço X" ou "o que é Y",
@@ -3973,6 +3978,43 @@ function get8WeekStats() {
   return weeks.reverse(); // Oldest to newest
 }
 
+// ==================== COACH — COMMIT A: calendário real da semana (2x2) ====================
+// v1.0 (Coach Commit A): fonte única de verdade para trabalho/folga é isWorkDay()
+// — esta função NÃO reimplementa a regra de escala, só empacota o resultado de
+// isWorkDay() dia a dia para a semana que está sendo planejada (mesma variável
+// targetPlanWeek que o formulário de planejamento já usa, então o Coach sempre
+// descreve a MESMA semana que o Planner está mostrando). O Gemini deixa de
+// precisar inferir a escala a partir de uma descrição textual genérica ("2x2").
+function getPlanningWeekSchedule() {
+  const planNextWeek = typeof targetPlanWeek !== 'undefined' && targetPlanWeek === 'next';
+  let ws;
+  if(planNextWeek) {
+    const nwStart = new Date(weekStart(today())+'T12:00:00');
+    nwStart.setDate(nwStart.getDate()+7);
+    ws = nwStart.toISOString().split('T')[0];
+  } else {
+    ws = weekStart(today());
+  }
+  const dayNames = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+  const days = [];
+  for(let i=0;i<7;i++) {
+    const d = new Date(ws+'T12:00:00');
+    d.setDate(d.getDate()+i);
+    const dateStr = d.toISOString().split('T')[0];
+    days.push({ date: dateStr, dayName: dayNames[i], isWork: isWorkDay(dateStr) });
+  }
+  return days;
+}
+
+// Formata a lista de dias em texto simples para o prompt — DD/MM/AAAA (Dia) — ESTADO.
+// Puramente textual, não recalcula nada; usa isWork já resolvido por isWorkDay().
+function formatWeekScheduleForPrompt(days) {
+  return days.map(d => {
+    const [y,m,dd] = d.date.split('-');
+    return `${dd}/${m}/${y} (${d.dayName}) — ${d.isWork ? 'TRABALHO' : 'FOLGA'}`;
+  }).join('\n');
+}
+
 function buildCoachContext() {
   const days = state.config.raceDate ? daysBetween(today(), state.config.raceDate) : '--';
   const wkm = kmThisWeek().toFixed(1);
@@ -3997,6 +4039,10 @@ function buildCoachContext() {
   const fatigueTrend = recent3.length>0 ? (recent3.reduce((a,w)=>a+(w.fatigue||0),0)/recent3.length).toFixed(1) : null;
   const rpeTrend = recent3.length>0 ? (recent3.reduce((a,w)=>a+(w.rpe||0),0)/recent3.length).toFixed(1) : null;
 
+  // Commit A: calendário real da semana em planejamento, dia a dia, via isWorkDay().
+  const weekSchedule = getPlanningWeekSchedule();
+  const weekScheduleText = formatWeekScheduleForPrompt(weekSchedule);
+
   return {
     days, wkm, mkm, pred, rs, adh,
     goalDistanceKm, targetPaceInfo,
@@ -4006,6 +4052,7 @@ function buildCoachContext() {
     history8w,
     currentWeek,
     lastWeek,
+    weekSchedule, weekScheduleText,
     athleteName: state.config.name || 'Atleta',
     profile: state.athleteProfile || {}
   };
