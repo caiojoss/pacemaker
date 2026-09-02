@@ -1130,7 +1130,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
           <div id="plan-week-target-label" style="font-size:11px;color:var(--accent);font-family:var(--mono);margin-bottom:10px"></div>
           <div class="form-group" style="margin-bottom:10px">
             <label class="form-label">Meta de km <span id="plan-km-suggestion" style="color:var(--teal);font-size:9px;margin-left:4px"></span></label>
-            <input type="number" class="form-input" id="plan-km-goal" placeholder="52" style="font-size:14px"/>
+            <input type="number" class="form-input" id="plan-km-goal" placeholder="52" style="font-size:14px" oninput="_kmGoalTouchedByUser=true"/>
           </div>
           <div class="form-group" style="margin-bottom:10px">
             <label class="form-label">Disposição do corpo hoje</label>
@@ -1882,7 +1882,12 @@ let state = {
   calendarExport: {
     connected: false,
     lastExport: null
-  }
+  },
+  // v1.0 (Commit E): fonte única e rastreável de meta semanal de volume,
+  // persistida POR SEMANA — chave = weekStart() da segunda-feira daquela
+  // semana. NUNCA escrita com um valor de fallback (ver getWeeklyTarget()).
+  // { "2026-08-17": { targetKm, source:'manual'|'suggested', createdAt } }
+  weeklyTargets: {}
 };
 let selectedRpe = 0, selectedFatigue = 0, editingId = null;
 let plannerOffset = 0;
@@ -3964,7 +3969,15 @@ function get8WeekStats() {
     const runs = completed.filter(w => ['z2', 'long', 'interval', 'progressivo', 'tempo'].includes(w.type) && w.pace);
     const avgPace = runs.length > 0 ? runs.reduce((a, w) => a + paceToSec(w.pace), 0) / runs.length : 0;
 
-    const wg = state.config.weekGoal || 52;
+    // v1.0 (Commit E): protege a aderência histórica contra mudanças
+    // retroativas — antes lia state.config.weekGoal (o valor ATUAL),
+    // aplicado até a semanas passadas; mudar a meta hoje reescrevia a
+    // aderência de toda a janela de 8 semanas. Agora cada bucket usa a meta
+    // REAL daquela semana específica (se foi persistida via confirmPlan()
+    // depois do Commit E) ou o fallback claramente sinalizado (semanas
+    // anteriores ao Commit E, ou semanas nunca planejadas pelo formulário).
+    const weeklyTarget = getWeeklyTarget(wsStr);
+    const wg = weeklyTarget.targetKm;
 
     weeks.push({
       label: `${ws.getDate()}/${ws.getMonth()+1}`,
@@ -3972,7 +3985,10 @@ function get8WeekStats() {
       adherence: wg > 0 ? Math.min(100, Math.round((km / wg) * 100)) : 0,
       fatigue: parseFloat(avgFatigue.toFixed(1)),
       pace: Math.round(avgPace),
-      longDist: longRun ? longRun.dist : 0
+      longDist: longRun ? longRun.dist : 0,
+      // Novo — auditável: distingue meta real registrada de estimativa de
+      // fallback. Nenhum consumidor existente lê este campo ainda (aditivo).
+      weeklyTargetPersisted: weeklyTarget.persisted
     });
   }
   return weeks.reverse(); // Oldest to newest
@@ -4125,9 +4141,12 @@ function renderCoachContext() {
   }
 
   // Smart km suggestion
-  const suggested = suggestWeekKm();
+  // v1.0 (Commit E): fonte trocada de suggestWeekKm() para o novo motor —
+  // via resolveWeeklyTargetSuggestion(), que é a mesma função que
+  // previewWeekPlan() usa. Hint text e geração real não podem mais divergir.
+  const suggested = resolveWeeklyTargetSuggestion();
   const pgEl = document.getElementById('plan-km-goal');
-  if(pgEl && !pgEl.value) pgEl.value = suggested;
+  if(pgEl && !pgEl.value) { pgEl.value = suggested; _kmGoalTouchedByUser = false; }
   const sugEl = document.getElementById('plan-km-suggestion');
   if(sugEl) sugEl.textContent = `· Sugestão: ${suggested}km`;
 
@@ -4144,8 +4163,8 @@ function renderCoachContext() {
       const we = new Date(ws); we.setDate(we.getDate()+6);
       labelEl.textContent = `Planejando: ${ws.getDate()}/${ws.getMonth()+1} – ${we.getDate()}/${we.getMonth()+1} (semana atual)`;
     }
-    // Sync suggestWeekKm to respect selected week
-    const suggested = suggestWeekKm();
+    // Sync suggestion to respect selected week
+    const suggested = resolveWeeklyTargetSuggestion();
     const sugEl = document.getElementById('plan-km-suggestion');
     if(sugEl) sugEl.textContent = `· Sugestão: ${suggested}km`;
   }
@@ -4191,6 +4210,12 @@ function removeTypingIndicator() { const t=document.getElementById('typing-indic
 
 // ==================== TOGGLE REF ====================
 let useLastWeekRef = false;
+// v1.0 (Commit E): distingue "usuário digitou um valor" de "campo só está
+// com a sugestão pré-preenchida" — sem isso, os dois casos são
+// indistinguíveis e setWeeklyTarget() não saberia qual 'source' gravar.
+// Resetado para false toda vez que o campo é preenchido programaticamente
+// (renderCoachContext()); vira true no primeiro input do usuário.
+let _kmGoalTouchedByUser = false;
 function toggleRef() {
   useLastWeekRef = !useLastWeekRef;
   const el = document.getElementById('toggle-ref');
@@ -4269,6 +4294,107 @@ function getNextStrengthSession() {
   return 1;
 }
 
+// ==================== COMMIT E — FONTE ÚNICA DE VOLUME SEMANAL ====================
+// v1.0 (Commit E): weeklyTargetKm (meta oficial da semana) vs plannedVolumeKm
+// (soma real do que generateWeekPlan() construiu — já exposto pelo Commit B)
+// vs actualVolumeKm (soma dos executados — já existe via kmThisWeek()/
+// get8WeekStats()). Os três NUNCA são a mesma variável. Esta seção só cria a
+// autoridade para o primeiro; os outros dois já existiam e não são tocados.
+
+// Leitura — nunca inventa fato histórico. Fallback é sinalizado
+// explicitamente (persisted:false) e NUNCA gravado de volta em
+// state.weeklyTargets — sem isso, uma estimativa viraria "fato" permanente.
+function getWeeklyTarget(weekKey) {
+  const persisted = state.weeklyTargets[weekKey];
+  if (persisted) return { ...persisted, persisted: true };
+  return { targetKm: state.config.weekGoal || 52, source: 'legacy_fallback', persisted: false };
+}
+
+// Escrita — única função que grava em state.weeklyTargets. Chamada só em
+// confirmPlan() (ação explícita do usuário), nunca em preview. Reconfirmar
+// a mesma semana SOBRESCREVE o valor anterior (regra aprovada — último
+// valor confirmado explicitamente é que vale).
+function setWeeklyTarget(weekKey, targetKm, source) {
+  state.weeklyTargets[weekKey] = { targetKm, source, createdAt: new Date().toISOString() };
+  save();
+}
+
+const WEEKLY_TARGET_ENGINE_PARAMS = {
+  tendenciaSubindoPct: 0.05,
+  tendenciaCaindoPct: -0.10,
+  incrementoSubindoPct: 0.10,
+  incrementoEstavelPct: 0.05,
+  // Sem cap absoluto em km (diferente do Commit D) — volume semanal varia
+  // demais em escala absoluta entre atletas para um cap fixo fazer sentido.
+  // Sem piso/teto (30/85 removidos — auditoria não encontrou justificativa
+  // documentada para esses números; ver relatório do Commit E).
+};
+
+function medianaSimples(arr) {
+  const s = [...arr].sort((a, b) => a - b);
+  const n = s.length;
+  if (n === 0) return null;
+  const mid = Math.floor(n / 2);
+  return n % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+// Motor de recomendação — responsabilidade ÚNICA: "com base no volume real
+// recente, o que seria uma progressão razoável?". NÃO lê state.config.weekGoal,
+// NÃO lê readiness/rs/feeling, NÃO persiste, NÃO aplica piso/teto arbitrário.
+// Usa exclusivamente semanas FECHADAS (get8WeekStats() já existente) — o
+// volume parcial da semana em andamento nunca entra nesta conta.
+function getSuggestedWeeklyTarget(p = WEEKLY_TARGET_ENGINE_PARAMS) {
+  const h = get8WeekStats(); // 8 semanas, mais antiga -> mais recente
+  // A última posição (h[7]) é a semana ATUAL (em andamento) — nunca uma
+  // semana "fechada". Semanas fechadas são h[0..6].
+  const semanasFechadas = h.slice(0, 7).map(w => w.km).filter(km => km > 0);
+
+  if (semanasFechadas.length === 0) {
+    return { status: 'sem_dados', targetKm: null, motivo: 'Nenhuma semana fechada com volume registrado.' };
+  }
+
+  const recentesParaCapacidade = semanasFechadas.length >= 3
+    ? semanasFechadas.slice(-3)
+    : semanasFechadas.slice(-2);
+  const capacidadeSemanal = recentesParaCapacidade.length >= 2
+    ? medianaSimples(recentesParaCapacidade)
+    : recentesParaCapacidade[0];
+
+  let tendencia = 'insuficiente';
+  if (semanasFechadas.length >= 2) {
+    const [prev, curr] = semanasFechadas.slice(-2);
+    const variacao = (curr - prev) / prev;
+    if (variacao >= p.tendenciaSubindoPct) tendencia = 'subindo';
+    else if (variacao <= p.tendenciaCaindoPct) tendencia = 'caindo';
+    else tendencia = 'estável';
+  }
+
+  let incremento = 0;
+  if (tendencia === 'subindo') incremento = capacidadeSemanal * p.incrementoSubindoPct;
+  else if (tendencia === 'estável' || tendencia === 'insuficiente') incremento = capacidadeSemanal * p.incrementoEstavelPct;
+  // 'caindo' -> incremento permanece 0 (manter, não reduzir — motor não sabe a causa da queda)
+
+  const targetKm = parseFloat((capacidadeSemanal + incremento).toFixed(1));
+
+  return {
+    status: 'calibrado', targetKm, capacidadeSemanal, tendencia,
+    incremento: parseFloat(incremento.toFixed(2)),
+    motivo: `capacidade(${capacidadeSemanal}) + incremento(${incremento.toFixed(2)}) [tendência=${tendencia}, mediana de ${recentesParaCapacidade.length}]`
+  };
+}
+
+// v1.0 (Commit E): ponte entre o motor puro e os consumidores do formulário
+// de planejamento. suggestWeekKm() permanece no código abaixo, intocada,
+// mas deixa de alimentar este fluxo — substituída por esta função, que
+// aplica o único fallback aceitável (do COMPOSITOR, não do motor): quando
+// não há semanas fechadas suficientes, cai para state.config.weekGoal,
+// preservando o mesmo comportamento de fallback que suggestWeekKm() já
+// tinha nesse caso específico (linha "configured = state.config.weekGoal||52").
+function resolveWeeklyTargetSuggestion() {
+  const r = getSuggestedWeeklyTarget();
+  return r.status === 'calibrado' ? r.targetKm : (state.config.weekGoal || 52);
+}
+
 // ==================== SMART KM SUGGESTION ====================
 function suggestWeekKm() {
   const c = buildCoachContext();
@@ -4287,8 +4413,31 @@ function suggestWeekKm() {
 
 // Get full strength steps for a combo workout
 // ==================== LOAD BALANCE ====================
+// v1.0 (Commit C — integridade do balanceamento de volume): substitui a
+// redistribuição antiga (que terminava com um "ajuste final" jogando o gap
+// inteiro no último dia ajustável, sem respeitar o piso — foi assim que um
+// treino de -2km chegou a ser gerado). Nenhuma outra regra deste sistema foi
+// tocada: suggestWeekKm(), planParams.long, pace de intervalado, Zone Engine,
+// Race IQ e isWorkDay() permanecem exatamente como estavam.
+//
+// Piso operacional mantido em 5km — o MESMO valor que a função já usava
+// antes (não é uma regra fisiológica nova, é o piso que já existia).
+//
+// Algoritmo (redistribuição iterativa com trava no piso):
+// 1. O gap (kmGoal - km já alocado) é dividido igualmente entre os dias
+//    ainda "destravados".
+// 2. Um dia que bateria no piso ao receber sua fração é travado nele
+//    (nunca abaixo) e sai das rodadas seguintes.
+// 3. O que sobrou por causa da trava volta para o gap e é redistribuído
+//    entre os dias que ainda têm folga — nunca tudo de uma vez no último.
+// 4. Se todos os dias travarem no piso antes do gap zerar, a função para:
+//    preserva a integridade dos treinos (nenhum abaixo do piso, nenhum
+//    negativo) e aceita a diferença residual em vez de inventar uma
+//    distância inválida. O Commit B já garante que o Preview mostra a soma
+//    REAL (não a meta), então essa diferença aparece naturalmente para o
+//    atleta — não precisa de nenhuma mudança de UI para "reportar" isso.
 function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier) {
-  // Hit kmGoal exactly by adjusting Z2 days
+  const FLOOR_KM = 5;
   const currentKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
   const gap = kmGoal - currentKm;
   if (Math.abs(gap) < 0.1) return;
@@ -4296,40 +4445,49 @@ function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier) {
   const adjustable = plan.filter(p=>
     p.workout && ['z2','recovery'].includes(p.workout.type) && !p.done && !p.isPast
   );
-  
-  if(adjustable.length === 0) return;
+  if (adjustable.length === 0) return;
 
-  // Distribute gap across adjustable days
-  const perDay = gap / adjustable.length;
-  adjustable.forEach((p, idx) => {
-    const oldDist = p.workout.dist || 0;
-    // Round to 1 decimal place to avoid floating point mess
-    let newDist = parseFloat((oldDist + perDay).toFixed(1));
-    
-    // Safety floor: 5km
-    if (newDist < 5) newDist = 5;
-    
+  const items = adjustable.map(p => ({ p, dist: p.workout.dist || 0, locked: false }));
+  let remainingGap = gap;
+  let safety = 0; // limite defensivo de iterações — nunca deveria chegar perto disso na prática
+
+  while (Math.abs(remainingGap) >= 0.05 && safety < 20) {
+    safety++;
+    const unlocked = items.filter(it => !it.locked);
+    if (unlocked.length === 0) break; // ninguém mais pode absorver — para aqui, sem forçar nada
+
+    const perDay = remainingGap / unlocked.length;
+    let appliedThisRound = 0;
+
+    unlocked.forEach(item => {
+      const proposed = item.dist + perDay;
+      if (proposed < FLOOR_KM) {
+        appliedThisRound += (FLOOR_KM - item.dist);
+        item.dist = FLOOR_KM;
+        item.locked = true;
+      } else {
+        item.dist = parseFloat(proposed.toFixed(1));
+        appliedThisRound += perDay;
+      }
+    });
+
+    remainingGap -= appliedThisRound;
+  }
+
+  // Aplica os valores finais — por construção, nunca < FLOOR_KM, nunca negativo —
+  // e ressincroniza título/descrição/passos, exatamente como a versão anterior fazia.
+  items.forEach(({ p, dist }) => {
+    const newDist = Math.max(FLOOR_KM, parseFloat(dist.toFixed(1)));
     p.workout.dist = newDist;
-    // Re-sync all strings
     p.workout.title = p.workout.title.replace(/\d+(\.\d+)?km/g, `${newDist}km`);
     if (!p.workout.title.includes('km')) p.workout.title += ` ${newDist}km`;
     p.workout.desc = p.workout.desc.replace(/\d+(\.\d+)?km/g, `${newDist}km`);
-    if(p.workout.steps) {
+    if (p.workout.steps) {
       p.workout.steps.forEach(s => {
         s.text = s.text.replace(/\d+(\.\d+)?km/g, `${newDist}km`);
       });
     }
   });
-
-  // Final sanity check: if we are still off due to the 5km floor, adjust the last day
-  const finalKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
-  const finalGap = kmGoal - finalKm;
-  if (Math.abs(finalGap) > 0.1) {
-    const lastDay = adjustable[adjustable.length - 1];
-    lastDay.workout.dist = parseFloat((lastDay.workout.dist + finalGap).toFixed(1));
-    // Final sync
-    lastDay.workout.title = lastDay.workout.title.replace(/\d+(\.\d+)?km/g, `${lastDay.workout.dist}km`);
-  }
 }
 
 // ==================== PLAN WEEK - PREVIEW ====================
@@ -4351,7 +4509,12 @@ function setPlanWeek(week) {
 }
 
 function previewWeekPlan() {
-  const kmGoal = parseFloat(document.getElementById('plan-km-goal').value)||suggestWeekKm();
+  // v1.0 (Commit E): fonte trocada para o novo motor via resolveWeeklyTargetSuggestion().
+  // kmGoalSource captura a proveniência (manual vs suggested) usando o flag
+  // de sessão — necessário para setWeeklyTarget() gravar o 'source' correto
+  // em confirmPlan(), sem confundir "não mexi no campo" com "aceitei de propósito".
+  const kmGoal = parseFloat(document.getElementById('plan-km-goal').value)||resolveWeeklyTargetSuggestion();
+  const kmGoalSource = _kmGoalTouchedByUser ? 'manual' : 'suggested';
   const feeling = document.getElementById('plan-feeling').value;
   const notes = document.getElementById('plan-notes').value.trim();
   const c = buildCoachContext();
@@ -4391,7 +4554,7 @@ function previewWeekPlan() {
   }
 
   const plan = generateWeekPlan(weekDays, kmGoal, feeling, notes, c, useLastWeekRef, planParams);
-  pendingPlan = {plan, kmGoal, feeling, notes, targetWs, weekLabel, planNextWeek, weekDays};
+  pendingPlan = {plan, kmGoal, kmGoalSource, feeling, notes, targetWs, weekLabel, planNextWeek, weekDays};
 
   // Preview counts
   const longCount = plan.filter(p=>p.workout?.type==='long').length;
@@ -4399,10 +4562,21 @@ function previewWeekPlan() {
   const z2Count = plan.filter(p=>p.workout?.type==='z2').length;
   const strengthCount = plan.filter(p=>p.workout?.type==='strength').length;
   const totalKm = plan.filter(p=>p.workout&&!p.done&&!p.isPast).reduce((a,p)=>a+(p.workout.dist||0),0);
+  // v1.0 (Commit B — Preview como source of truth): distância real do(s)
+  // treino(s) type='long' DENTRO do próprio pendingPlan.plan — nunca mais
+  // planParams.long. planParams.long é só o valor "alvo" do controle manual
+  // (slider em Ajustar Parâmetros); o Preview deve descrever o que
+  // generateWeekPlan() de fato produziu, que pode divergir desse alvo por
+  // causa do cap de 45% do volume semanal (ver auditoria do Commit A/B).
+  // Se por algum motivo houver mais de um dia type='long' na semana, soma-se
+  // a distância real de todos — nunca um valor hardcoded/estático.
+  const longActualDist = plan
+    .filter(p=>p.workout?.type==='long')
+    .reduce((a,p)=>a+(p.workout.dist||0), 0);
 
   const stdSubtitle = `Semana ${weekLabel} · Meta: ${kmGoal}km`;
   const stdList = [
-    longCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${longCount} longão (${planParams.long}km alvo)</div>`:'',
+    longCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${longCount} longão (${longActualDist}km)</div>`:'',
     qualityCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${qualityCount} treino de qualidade</div>`:'',
     z2Count>0?`<div class="preview-item"><span class="preview-check">✓</span>${z2Count} rodagem Z2</div>`:'',
     strengthCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${strengthCount} musculação (rotação A→B→C)</div>`:'',
@@ -4435,7 +4609,7 @@ function previewWeekPlan() {
 
 function confirmPlan(conservative=false) {
   if(!pendingPlan) return;
-  let {plan, kmGoal, feeling, notes, targetWs, weekLabel, planNextWeek, weekDays} = pendingPlan;
+  let {plan, kmGoal, kmGoalSource, feeling, notes, targetWs, weekLabel, planNextWeek, weekDays} = pendingPlan;
   const c = buildCoachContext();
   const feelingLabel = {great:'ótimo',good:'bem',tired:'cansado',pain:'com dor'}[feeling];
 
@@ -4458,7 +4632,11 @@ function confirmPlan(conservative=false) {
       notes:p.workout.desc||'', planned:true, steps:p.workout.steps||null
     });
   });
-  save();
+  // v1.0 (Commit E): única gravação de weeklyTargetKm — ação explícita do
+  // usuário (confirmar o plano), nunca em preview. targetWs já é a chave de
+  // semana correta (mesma weekStart() usada em todo o resto do sistema).
+  // Reconfirmar a mesma semana sobrescreve o valor anterior (regra aprovada).
+  setWeeklyTarget(targetWs, kmGoal, conservative ? 'manual' : (kmGoalSource || 'suggested'));
 
   let msg = `${conservative?'🛡 Plano conservador':'Plano'} confirmado — semana ${weekLabel}! Meta: ${kmGoal}km · Disposição: ${feelingLabel}.\n\n`;
   plan.forEach(p=>{
@@ -4482,6 +4660,138 @@ function confirmPlan(conservative=false) {
 // Conservative plan: show diff preview before saving
 // previewConservativePlan: defined below with preview-confirm-row approach
 
+// ==================== COMMIT D — MOTOR DE LONGÃO ====================
+// v1.0 (Commit D): fonte única para a DISTÂNCIA do longão. Substitui a regra
+// antiga (planKm × 45%, capada por planParams.long=22 hardcoded) por um
+// motor baseado em capacidade real demonstrada + tendência + fase da prova.
+// A meta semanal NUNCA entra nesta conta — ela só age depois, como
+// orçamento/restrição da composição semanal (ver Commits B/C).
+//
+// Escopo estritamente isolado: esta função e getLongoesValidos8w() não
+// leem nem escrevem em nada relacionado a pace, qualidade, Coach/Gemini,
+// Zone Engine, Race IQ ou volume semanal. A única integração é dentro de
+// generateWeekPlan(), no bloco do longão.
+
+const LONG_RUN_ENGINE_PARAMS = {
+  taperDays: 14,          // dias<=14 -> TAPER (mesmo limiar já usado no texto do Coach)
+  especificaMaxDays: 28,  // 15-28 -> ESPECÍFICA
+  buildMaxDays: 56,       // 29-56 -> BUILD ; >56 -> BASE
+  incrementoMaxKm: 2,
+  incrementoMaxPct: 0.10,
+  estavelIncrementoMaxKm: 1,
+  estavelIncrementoMaxPct: 0.05,
+  taperReducaoPct: 0.65,
+  tendenciaSubindoPct: 0.05,
+  tendenciaCaindoPct: -0.10,
+  pisoOperacionalKm: 5,   // mesmo piso já usado em balanceWeeklyLoad() (Commit C)
+  // Demanda da prova — SOMENTE maratona tem regra existente e aprovada
+  // (mesmo teto de Math.min(32,...) já usado em outros pontos do sistema).
+  // half/10k/5k/health ficam SEM teto neste commit — PENDENTE DE DECISÃO,
+  // não inventado aqui.
+  tetoProvaPorObjetivo: { marathon: 32, half: null, '10k': null, '5k': null, health: null }
+};
+
+// "Longão válido": mesma janela de 8 semanas de get8WeekStats() (não é uma
+// janela nova) — reaproveita literalmente a mesma matemática de limites.
+function getLongoesValidos8w() {
+  const currWs = new Date(weekStart(today()) + 'T12:00:00');
+  const windowEnd = new Date(currWs); windowEnd.setDate(windowEnd.getDate() + 6);
+  const windowStart = new Date(currWs); windowStart.setDate(windowStart.getDate() - 7 * 7);
+  const windowStartStr = windowStart.toISOString().split('T')[0];
+  const windowEndStr = windowEnd.toISOString().split('T')[0];
+
+  return state.workouts
+    .filter(w =>
+      (w.type === 'long' || w.dist >= 15) &&
+      !w.planned &&
+      w.dist > 0 &&
+      w.pace && paceToSec(w.pace) > 0 &&
+      w.date >= windowStartStr && w.date <= windowEndStr
+    )
+    .sort((a, b) => a.date.localeCompare(b.date)); // cronológico: mais antigo primeiro
+}
+
+function median(arr) {
+  const s = [...arr].sort((a, b) => a - b);
+  const n = s.length;
+  if (n === 0) return null;
+  const mid = Math.floor(n / 2);
+  return n % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+function classificarTendenciaLongao(longoesCronologico, p = LONG_RUN_ENGINE_PARAMS) {
+  if (longoesCronologico.length < 2) return 'insuficiente';
+  const [prev, curr] = longoesCronologico.slice(-2);
+  const variacaoPct = (curr - prev) / prev;
+  if (variacaoPct >= p.tendenciaSubindoPct) return 'subindo';
+  if (variacaoPct <= p.tendenciaCaindoPct) return 'caindo';
+  return 'estável';
+}
+
+function classificarFaseLongao(diasParaProva, p = LONG_RUN_ENGINE_PARAMS) {
+  if (diasParaProva === null || diasParaProva === undefined || diasParaProva === '--') return 'base';
+  if (diasParaProva <= p.taperDays) return 'taper';
+  if (diasParaProva <= p.especificaMaxDays) return 'específica';
+  if (diasParaProva <= p.buildMaxDays) return 'build';
+  return 'base';
+}
+
+// Motor central — única autoridade sobre a distância do longão.
+// Retorna { status:'sem_dados', dist:null, ... } OU { status:'calibrado', dist:N, ... }
+// com todos os campos intermediários para auditoria (nunca "caixa preta").
+function getLongRunTarget(diasParaProva, goalType, p = LONG_RUN_ENGINE_PARAMS) {
+  const longoes = getLongoesValidos8w();
+  const distancias = longoes.map(w => w.dist);
+
+  if (distancias.length === 0) {
+    return {
+      status: 'sem_dados', dist: null,
+      capacidadeDemonstrada: null, tendencia: null, fase: null, incremento: null, tetoAplicado: null,
+      motivo: 'Nenhum longão válido na janela de 8 semanas — nenhuma distância inventada.'
+    };
+  }
+
+  const recentes = distancias.slice(-2);
+  const capacidadeDemonstrada = recentes.length === 2 ? median(recentes) : recentes[0];
+  const tendencia = classificarTendenciaLongao(distancias, p);
+  const fase = classificarFaseLongao(diasParaProva, p);
+
+  if (fase === 'taper') {
+    const candidato = Math.max(p.pisoOperacionalKm, parseFloat((capacidadeDemonstrada * p.taperReducaoPct).toFixed(1)));
+    return {
+      status: 'calibrado', dist: candidato,
+      capacidadeDemonstrada, tendencia, fase, incremento: null, tetoAplicado: null,
+      motivo: `TAPER (${diasParaProva}d p/ prova): candidato = capacidade(${capacidadeDemonstrada}) × ${p.taperReducaoPct} = ${candidato}km. Progressão ignorada deliberadamente.`
+    };
+  }
+
+  let incremento = 0;
+  if (tendencia === 'subindo') {
+    incremento = Math.min(p.incrementoMaxKm, capacidadeDemonstrada * p.incrementoMaxPct);
+  } else if (tendencia === 'estável' || tendencia === 'insuficiente') {
+    // 'insuficiente' (só 1 longão) tratado como 'estável' — decisão aprovada explicitamente
+    incremento = Math.min(p.estavelIncrementoMaxKm, capacidadeDemonstrada * p.estavelIncrementoMaxPct);
+  }
+  // 'caindo' -> incremento permanece 0
+
+  if (fase === 'build') incremento = incremento / 2;
+  if (fase === 'específica') incremento = 0;
+
+  let candidato = capacidadeDemonstrada + incremento;
+
+  const tetoProva = p.tetoProvaPorObjetivo[goalType];
+  if (typeof tetoProva === 'number') candidato = Math.min(candidato, tetoProva);
+
+  candidato = Math.max(p.pisoOperacionalKm, parseFloat(candidato.toFixed(1)));
+
+  return {
+    status: 'calibrado', dist: candidato,
+    capacidadeDemonstrada, tendencia, fase, incremento: parseFloat(incremento.toFixed(2)),
+    tetoAplicado: (typeof tetoProva === 'number') ? tetoProva : null,
+    motivo: `capacidade(${capacidadeDemonstrada}) + incremento(${incremento.toFixed(2)}) [tendência=${tendencia}, fase=${fase}]${typeof tetoProva === 'number' ? `, teto=${tetoProva}km` : ''}`
+  };
+}
+
 // ==================== GENERATE WEEK PLAN ====================
 function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, params=planParams) {
   // v1.0 (Zone Engine Commit 2): calculado uma única vez por chamada da
@@ -4497,7 +4807,11 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   // Sem isso, semanas com dias já completados (ex: segunda já feita) somavam
   // proporções calculadas sobre kmGoal total + o km já realizado, gerando excesso.
   const planKm = remaining;
-  const targetLong = Math.min(36, Math.round(params.long * fatigueMultiplier));
+  // v1.0 (Commit D): targetLong (planKm×45% cap com planParams.long) foi REMOVIDO.
+  // A distância do longão agora vem exclusivamente de getLongRunTarget() — ver
+  // motor definido acima. planParams.long continua existindo só como valor do
+  // slider manual em "Ajustar Parâmetros" (Advanced Params), sem nenhuma
+  // autoridade sobre o que é de fato gerado.
   const noteLC = notes.toLowerCase();
   const hasRace = noteLC.includes('prova')||noteLC.includes('race');
   const wantIntervals = noteLC.includes('tiro')||noteLC.includes('interval')||noteLC.includes('velocidade');
@@ -4516,10 +4830,20 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     freeOffDays.find(d=>[6,0].includes(new Date(d.date+'T12:00:00').getDay()))||freeOffDays[0]
   ) : null;
   if(longDay) {
-    const dist = Math.min(targetLong, Math.round(planKm * 0.45));
+    // v1.0 (Commit D): fonte única da distância — getLongRunTarget(). Não usa
+    // mais planKm/kmGoal (meta semanal NUNCA determina o longão) nem
+    // planParams.long (hardcode antigo). 'sem_dados' é uma decisão explícita
+    // do COMPOSITOR (esta função), não do motor: o motor recusa inventar uma
+    // distância; o compositor, que precisa preencher o dia de alguma forma,
+    // aplica o piso operacional como fallback mínimo nesse caso específico.
+    const longRunResult = getLongRunTarget(ctx?.days, state.config.goalType);
+    const dist = (longRunResult.status === 'calibrado')
+      ? longRunResult.dist
+      : LONG_RUN_ENGINE_PARAMS.pisoOperacionalKm; // sem_dados — fallback do compositor, não do motor
     longDay.workout = {
       type:'long', title:`Longão ${dist}km`, dist, pace:z2ref.pace,
       desc:`${dist}km em Z2 · ${z2ref.text}`,
+      longRunEngine: longRunResult, // auditável — não afeta render, só rastreabilidade
       steps:[
         {icon:'🔥',text:'Aquecimento 2km leve',detail:'pace >7:00'},
         {icon:'🏃',text:`${dist-4}km em Z2`,detail:z2ref.text},
@@ -6279,7 +6603,8 @@ function buildCloudPayload() {
     geminiKeyEncrypted: rawKey ? geminiKeyToCloud(rawKey) : null,
     chatHistory: state.chatHistory, // Sync chat history across devices
     onboardingDone: state.onboardingDone || false, // v0.9.0
-    aiStrategy: state.aiStrategy || null // v0.9.2
+    aiStrategy: state.aiStrategy || null, // v0.9.2
+    weeklyTargets: state.weeklyTargets || {} // v1.0 (Commit E)
   };
 }
 
@@ -6333,6 +6658,7 @@ async function downloadFromCloud() {
       if(data.chatHistory)    state.chatHistory    = data.chatHistory;
       if(typeof data.onboardingDone === 'boolean') state.onboardingDone = data.onboardingDone; // v0.9.0
       if(data.aiStrategy)     state.aiStrategy     = data.aiStrategy; // v0.9.2
+      if(data.weeklyTargets)  state.weeklyTargets  = data.weeklyTargets; // v1.0 (Commit E)
       if(data.updatedAt)      state.updatedAt      = data.updatedAt;  // v0.9.2.2: sincroniza o marcador local com a nuvem aplicada
       // Restore Strava config so Client ID appears on new devices
       if(data.stravaConfig)   state.stravaConfig   = { ...state.stravaConfig,   ...data.stravaConfig   };
