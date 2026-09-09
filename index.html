@@ -1412,10 +1412,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <div class="card">
         <div class="label" style="margin-bottom:10px">Dados do app</div>
         <button class="btn btn-danger btn-full" onclick="if(confirm('Apagar todos os treinos? Isso não pode ser desfeito.'))clearData()">Limpar todos os treinos</button>
-        <button class="btn btn-ghost btn-full" style="margin-top:8px;font-size:11px;color:var(--text3)" onclick="enterOnboardingTestMode()">🧪 Testar onboarding (reversível)</button>
-        <button class="btn btn-ghost btn-full" id="btn-restore-test" style="margin-top:8px;font-size:11px;color:var(--teal);display:none" onclick="restoreFromTestBackup()">↩️ Restaurar meus dados reais</button>
       </div>
-      <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:20px;padding-bottom:10px">PACEMAKER v1.0 · Seus dados ficam no dispositivo</div>
+      <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:20px;padding-bottom:10px">PACEMAKER <span id="settings-version-label"></span> · Seus dados ficam no dispositivo</div>
     </div>
 
     <!-- v0.8.5: WEEKLY REPORTS SECTION (desktop) -->
@@ -1806,6 +1804,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
 
 <script>
 // ==================== STATE ====================
+// v1.0 (ajuste de produto): fonte única da versão exibida ao usuário —
+// antes, "v0.9.0" ficava hardcoded em 2 badges do Weekly Report (nunca
+// atualizados) enquanto o rodapé de Configurações já mostrava "v1.0"
+// separadamente. Qualquer atualização futura de versão muda só esta linha.
+const PACEMAKER_VERSION = 'v1.0';
+
 const DB_KEY_LEGACY = 'pacemaker_v2';
 function getDbKey() {
   return state.user?.uid ? `pacemaker_${state.user.uid}` : DB_KEY_LEGACY;
@@ -2380,7 +2384,7 @@ function renderWeeklyReport() {
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div class="label" style="margin-bottom:0">Weekly Report · Semana Passada</div>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-accent">v0.9.0</span>
+          <span class="badge badge-accent">${PACEMAKER_VERSION}</span>
           <button class="btn btn-ghost" style="font-size:9px;padding:4px 8px;display:none" id="wr-fulllink" onclick="goTo('sec-weekly-reports')">Ver completo →</button>
         </div>
       </div>
@@ -5766,9 +5770,11 @@ function loadConfig() {
   updateRaceBlockVisibility();
   updateScaleFieldsVisibility();
 
-  // v0.9.0: mostra botão de restaurar se existe backup de teste pendente
-  const restoreBtn = document.getElementById('btn-restore-test');
-  if(restoreBtn) restoreBtn.style.display = hasTestBackup() ? '' : 'none';
+  // v1.0 (ajuste de produto): rodapé de versão agora vem da fonte única
+  // PACEMAKER_VERSION, não mais um "v1.0" solto no HTML estático.
+  const versionLabelEl = document.getElementById('settings-version-label');
+  if(versionLabelEl) versionLabelEl.textContent = PACEMAKER_VERSION;
+
   loadGeminiKeyField();
   // v1.0 (Commit 3): #cfg-strava-id foi removido da UI — Client ID agora é
   // fixo (STRAVA_CLIENT_ID_PUBLIC), nada a popular aqui.
@@ -5869,55 +5875,6 @@ function saveAthleteMemory() {
 function clearData() {
   state.workouts = []; state.chatHistory = [];
   save(); showToast('Treinos apagados'); renderDashboard(); renderLog();
-}
-
-// v0.9.0: MODO TESTE — reversível, não toca na nuvem
-// Faz backup do estado real num snapshot local separado, zera a tela
-// para simular um usuário novo, e permite restaurar tudo depois.
-const TEST_BACKUP_KEY = 'pacemaker_test_backup';
-
-function enterOnboardingTestMode() {
-  if(!confirm('Vou guardar uma cópia dos seus dados atuais e mostrar a tela de onboarding como se você fosse novo.\n\nNada é apagado de verdade — nem local, nem na nuvem. Se você recarregar a página (F5), volta tudo automaticamente. Continuar?')) return;
-
-  // Backup do estado atual (incluindo onboardingDone real) num snapshot separado
-  const backup = JSON.parse(JSON.stringify(state));
-  localStorage.setItem(TEST_BACKUP_KEY, JSON.stringify(backup));
-
-  // Trava o sync com a nuvem enquanto o modo teste estiver ativo
-  _testModeActive = true;
-
-  // Simula "usuário novo" só na sessão atual — sem tocar localStorage principal nem Firestore
-  state.workouts = [];
-  state.chatHistory = [];
-  state.onboardingDone = false;
-
-  showToast('Modo teste ativado — seus dados reais estão salvos');
-  renderDashboard();
-  renderLog();
-  showOnboarding();
-}
-
-function restoreFromTestBackup() {
-  const raw = localStorage.getItem(TEST_BACKUP_KEY);
-  if(!raw) { showToast('Nenhum backup de teste encontrado'); return; }
-  try {
-    const backup = JSON.parse(raw);
-    state = { ...state, ...backup, user: state.user }; // mantém o user atual (sessão de login ativa)
-    _testModeActive = false; // libera o sync com a nuvem de volta ao normal
-    save(); // persiste a restauração local; sincroniza com a nuvem normalmente
-    localStorage.removeItem(TEST_BACKUP_KEY);
-    showToast('Dados reais restaurados ✓');
-    hideOnboarding();
-    document.getElementById('screen-first-plan')?.classList.add('hidden');
-    goTo('sec-dashboard');
-  } catch(e) {
-    showToast('Erro ao restaurar backup', 'error');
-    console.error(e);
-  }
-}
-
-function hasTestBackup() {
-  return !!localStorage.getItem(TEST_BACKUP_KEY);
 }
 
 // ==================== STRAVA OAUTH ====================
@@ -7084,14 +7041,14 @@ function renderWeeklyReports() {
   el.innerHTML = `
     <div style="padding:0 0 16px;margin-bottom:16px;border-bottom:.5px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text3)">Análise das últimas 8 semanas de treino</div>
-      <span class="badge badge-accent">v0.9.0</span>
+      <span class="badge badge-accent">${PACEMAKER_VERSION}</span>
     </div>
     ${trendHtml}
     ${analysisHtml}
     <div class="label" style="margin-bottom:12px;letter-spacing:.1em">DETALHAMENTO SEMANAL</div>
     ${cardsHtml}
     <div style="text-align:center;font-family:var(--mono);font-size:9px;color:var(--text3);padding:16px 0">
-      Dados baseados nos treinos registrados · v0.9.0 Context Engine
+      Dados baseados nos treinos registrados · ${PACEMAKER_VERSION} Context Engine
     </div>
   `;
 }
