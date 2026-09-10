@@ -4148,7 +4148,9 @@ function renderCoachContext() {
   // v1.0 (Commit E): fonte trocada de suggestWeekKm() para o novo motor —
   // via resolveWeeklyTargetSuggestion(), que é a mesma função que
   // previewWeekPlan() usa. Hint text e geração real não podem mais divergir.
-  const suggested = resolveWeeklyTargetSuggestion();
+  // v1.0 (Issue 01): passa a semana-alvo para respeitar um target já
+  // confirmado para ela, em vez de sempre recalcular a sugestão do motor.
+  const suggested = resolveWeeklyTargetSuggestion(getTargetPlanWeekKey());
   const pgEl = document.getElementById('plan-km-goal');
   if(pgEl && !pgEl.value) { pgEl.value = suggested; _kmGoalTouchedByUser = false; }
   const sugEl = document.getElementById('plan-km-suggestion');
@@ -4168,7 +4170,8 @@ function renderCoachContext() {
       labelEl.textContent = `Planejando: ${ws.getDate()}/${ws.getMonth()+1} – ${we.getDate()}/${we.getMonth()+1} (semana atual)`;
     }
     // Sync suggestion to respect selected week
-    const suggested = resolveWeeklyTargetSuggestion();
+    // v1.0 (Issue 01): idem acima — respeita target já confirmado da semana selecionada.
+    const suggested = resolveWeeklyTargetSuggestion(getTargetPlanWeekKey());
     const sugEl = document.getElementById('plan-km-suggestion');
     if(sugEl) sugEl.textContent = `· Sugestão: ${suggested}km`;
   }
@@ -4394,9 +4397,36 @@ function getSuggestedWeeklyTarget(p = WEEKLY_TARGET_ENGINE_PARAMS) {
 // não há semanas fechadas suficientes, cai para state.config.weekGoal,
 // preservando o mesmo comportamento de fallback que suggestWeekKm() já
 // tinha nesse caso específico (linha "configured = state.config.weekGoal||52").
-function resolveWeeklyTargetSuggestion() {
+//
+// v1.0 (Issue 01 — fonte única de verdade): se a semana informada em
+// weekKey já possui um target CONFIRMADO em state.weeklyTargets (ação
+// explícita do usuário via confirmPlan()), esse valor é a fonte de verdade
+// e a sugestão do motor NUNCA o sobrescreve — reabrir o Planner para uma
+// semana já confirmada deve mostrar o valor confirmado, não recalcular uma
+// sugestão nova por cima dele (essa era exatamente a regra do Commit E,
+// que ainda não estava sendo aplicada aqui). weekKey é opcional e, quando
+// omitido, o comportamento é 100% idêntico ao anterior — nenhum chamador
+// existente é afetado além dos que passarem a fornecer o weekKey.
+function resolveWeeklyTargetSuggestion(weekKey) {
+  if (weekKey) {
+    const persisted = getWeeklyTarget(weekKey);
+    if (persisted.persisted) return persisted.targetKm;
+  }
   const r = getSuggestedWeeklyTarget();
   return r.status === 'calibrado' ? r.targetKm : (state.config.weekGoal || 52);
+}
+
+// v1.0 (Issue 01): weekKey da semana atualmente selecionada para
+// planejamento (current ou next) — MESMO cálculo já usado em
+// previewWeekPlan(), só nomeado para reuso em renderCoachContext(). Não
+// duplica regra nova, não altera weekStart()/targetPlanWeek.
+function getTargetPlanWeekKey() {
+  if (targetPlanWeek === 'next') {
+    const nwStart = new Date(weekStart(today())+'T12:00:00');
+    nwStart.setDate(nwStart.getDate()+7);
+    return nwStart.toISOString().split('T')[0];
+  }
+  return weekStart(today());
 }
 
 // ==================== SMART KM SUGGESTION ====================
@@ -4513,21 +4543,12 @@ function setPlanWeek(week) {
 }
 
 function previewWeekPlan() {
-  // v1.0 (Commit E): fonte trocada para o novo motor via resolveWeeklyTargetSuggestion().
-  // kmGoalSource captura a proveniência (manual vs suggested) usando o flag
-  // de sessão — necessário para setWeeklyTarget() gravar o 'source' correto
-  // em confirmPlan(), sem confundir "não mexi no campo" com "aceitei de propósito".
-  const kmGoal = parseFloat(document.getElementById('plan-km-goal').value)||resolveWeeklyTargetSuggestion();
-  const kmGoalSource = _kmGoalTouchedByUser ? 'manual' : 'suggested';
-  const feeling = document.getElementById('plan-feeling').value;
-  const notes = document.getElementById('plan-notes').value.trim();
-  const c = buildCoachContext();
-
-  // Sync param-long with last long workout
-  const lastLong = c.longoes[0];
-  if(lastLong && !planParams.long) planParams.long = Math.min(32, (parseFloat(lastLong.dist)||18)+2);
-
-  // Bug 3 fix: Use selected week bounds
+  // v1.0 (Issue 01): os limites da semana-alvo (targetWs/targetWe) precisam
+  // ser conhecidos ANTES de resolver o kmGoal — sem isso, resolveWeeklyTargetSuggestion()
+  // não tem como saber qual semana consultar em state.weeklyTargets. Este
+  // bloco é o MESMO cálculo que já existia mais abaixo ("Bug 3 fix: Use
+  // selected week bounds"), apenas movido para cima — nenhuma lógica nova,
+  // nenhuma fórmula alterada.
   let targetWs, targetWe;
   const planNextWeek = targetPlanWeek === 'next';
 
@@ -4542,6 +4563,22 @@ function previewWeekPlan() {
     const we = new Date(targetWs+'T12:00:00'); we.setDate(we.getDate()+6);
     targetWe = we.toISOString().split('T')[0];
   }
+
+  // v1.0 (Commit E): fonte trocada para o novo motor via resolveWeeklyTargetSuggestion().
+  // kmGoalSource captura a proveniência (manual vs suggested) usando o flag
+  // de sessão — necessário para setWeeklyTarget() gravar o 'source' correto
+  // em confirmPlan(), sem confundir "não mexi no campo" com "aceitei de propósito".
+  // v1.0 (Issue 01): passa targetWs para que um target já confirmado para
+  // esta semana específica prevaleça sobre uma nova sugestão do motor.
+  const kmGoal = parseFloat(document.getElementById('plan-km-goal').value)||resolveWeeklyTargetSuggestion(targetWs);
+  const kmGoalSource = _kmGoalTouchedByUser ? 'manual' : 'suggested';
+  const feeling = document.getElementById('plan-feeling').value;
+  const notes = document.getElementById('plan-notes').value.trim();
+  const c = buildCoachContext();
+
+  // Sync param-long with last long workout
+  const lastLong = c.longoes[0];
+  if(lastLong && !planParams.long) planParams.long = Math.min(32, (parseFloat(lastLong.dist)||18)+2);
 
   const weekLabel = (() => {
     const s=new Date(targetWs+'T12:00:00'), e=new Date(targetWe+'T12:00:00');
@@ -4640,7 +4677,15 @@ function confirmPlan(conservative=false) {
   // usuário (confirmar o plano), nunca em preview. targetWs já é a chave de
   // semana correta (mesma weekStart() usada em todo o resto do sistema).
   // Reconfirmar a mesma semana sobrescreve o valor anterior (regra aprovada).
-  setWeeklyTarget(targetWs, kmGoal, conservative ? 'manual' : (kmGoalSource || 'suggested'));
+  //
+  // v1.0 (Issue 02): a proveniência do valor de km (manual vs suggested)
+  // reflete de onde o NÚMERO veio (kmGoalSource, derivado de
+  // _kmGoalTouchedByUser em previewWeekPlan()) — nunca do modo do plano
+  // (conservative). Escolher "versão conservadora" não é, por si só, uma
+  // edição manual do campo de km; antes, o ternário `conservative ? 'manual'
+  // : ...` forçava source='manual' sempre que conservative fosse true,
+  // mesmo com o usuário nunca tendo tocado o campo.
+  setWeeklyTarget(targetWs, kmGoal, kmGoalSource || 'suggested');
 
   let msg = `${conservative?'🛡 Plano conservador':'Plano'} confirmado — semana ${weekLabel}! Meta: ${kmGoal}km · Disposição: ${feelingLabel}.\n\n`;
   plan.forEach(p=>{
