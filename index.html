@@ -953,6 +953,75 @@ button:not(:disabled),[role="button"],[onclick]{transition-timing-function:var(-
   *{scroll-behavior:auto!important}
 }
 
+
+/* Dashboard v2 — editorial weekly overview, scoped to the first tab. */
+#sec-dashboard.dashboard-v2{padding:0 0 38px}
+#sec-dashboard .db-v2-shell{width:min(100%,900px);margin:0 auto}
+#sec-dashboard .db-v2-topline{display:flex;align-items:center;justify-content:space-between;padding:0 0 15px;border-bottom:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;letter-spacing:.15em}
+#sec-dashboard .db-v2-brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-size:12px;font-weight:800;letter-spacing:.12em}
+#sec-dashboard .db-v2-brand-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px rgba(197,243,106,.34)}
+#sec-dashboard .db-v2-weekstamp{color:var(--accent);font-size:9px}
+#sec-dashboard .db-v2-greeting-row{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:30px 0 24px}
+#sec-dashboard .db-v2-kicker{margin-bottom:7px;color:var(--text3);font-family:var(--mono);font-size:9px;letter-spacing:.16em}
+#sec-dashboard .db-v2-greeting{margin:0;color:var(--text);font-family:var(--display);font-size:clamp(24px,3.5vw,38px);font-weight:750;letter-spacing:-.06em;line-height:1.08}
+#sec-dashboard .db-v2-add{min-height:34px;font-family:var(--mono);font-size:9px;letter-spacing:.08em}
+#sec-dashboard .db-v2-race-wrap{margin-bottom:24px}
+#sec-dashboard .db-v2-cycle{margin-bottom:16px;border-color:rgba(145,197,170,.28);background:var(--teal-dim)}
+#sec-dashboard .db-v2-race{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:17px 19px;border:1px solid rgba(197,243,106,.19);border-radius:var(--r-card);background:linear-gradient(110deg,rgba(197,243,106,.075),rgba(197,243,106,.018) 72%,transparent)}
+#sec-dashboard .db-v2-race-label,#sec-dashboard .db-v2-label{color:#a3aa97;font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:.15em}
+#sec-dashboard .db-v2-race-date{margin-top:7px;color:var(--text);font-family:var(--display);font-size:14px;font-weight:700;letter-spacing:.035em}
+#sec-dashboard .db-v2-countdown{flex:none;color:var(--accent);font-family:var(--mono);font-size:10px;letter-spacing:.08em}
+#sec-dashboard .db-v2-block{padding:22px 0;border-top:1px solid var(--border)}
+#sec-dashboard .db-v2-block-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+#sec-dashboard .db-v2-date{color:var(--text3);font-family:var(--mono);font-size:9px;letter-spacing:.07em;text-align:right}
+#sec-dashboard .db-v2-workout-title{color:var(--text);font-family:var(--display);font-size:clamp(30px,4vw,44px);font-weight:750;letter-spacing:-.07em;line-height:1.03}
+#sec-dashboard .db-v2-workout-detail{margin-top:7px;color:var(--text2);font-family:var(--mono);font-size:11px;letter-spacing:.025em}
+#sec-dashboard .db-v2-cta{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:310px;margin-top:20px;padding:12px 15px;background:var(--accent);color:#10120d;font-size:10px;letter-spacing:.08em}
+#sec-dashboard .db-v2-cta span,#sec-dashboard .db-v2-coach-cta span{font-size:15px;transition:transform 180ms var(--ease-out)}
+#sec-dashboard .db-v2-cta:hover span,#sec-dashboard .db-v2-coach-cta:hover span{transform:translateX(3px)}
+#sec-dashboard .db-v2-week{padding-bottom:24px}
+#sec-dashboard .db-v2-week-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+#sec-dashboard .db-v2-week-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#sec-dashboard .db-v2-week-cell{min-width:0}
+#sec-dashboard .db-v2-week-cell span{display:block;margin-bottom:8px;color:var(--text3);font-family:var(--mono);font-size:8px;letter-spacing:.12em}
+#sec-dashboard .db-v2-week-cell strong{color:var(--text);font-family:var(--mono);font-size:clamp(17px,2.4vw,23px);font-weight:500;letter-spacing:-.055em;font-variant-numeric:tabular-nums}
+#sec-dashboard .db-v2-week-cell:last-child strong{color:var(--accent)}
+#sec-dashboard .db-v2-progress{height:5px;margin-top:19px;overflow:hidden;border-radius:8px;background:rgba(242,243,238,.09)}
+#sec-dashboard .db-v2-progress-fill{height:100%;max-width:100%;border-radius:inherit;background:linear-gradient(90deg,#9bc94e,var(--accent));box-shadow:0 0 14px rgba(197,243,106,.24);transition:width 240ms var(--ease-out)}
+#sec-dashboard .db-v2-week-foot{display:flex;justify-content:space-between;gap:12px;margin-top:8px;color:var(--text3);font-family:var(--mono);font-size:8px;letter-spacing:.04em}
+#sec-dashboard .db-v2-context{padding-bottom:3px}
+#sec-dashboard .db-v2-context-copy{max-width:650px;margin:14px 0 18px;color:#d0d4c9;font-family:var(--display);font-size:14px;line-height:1.75}
+#sec-dashboard .db-v2-context-foot{display:flex;align-items:center;justify-content:space-between;gap:14px}
+#sec-dashboard #db-context-readiness{color:var(--text3);font-family:var(--mono);font-size:8px;letter-spacing:.1em}
+#sec-dashboard .db-v2-coach-cta{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--accent);font-family:var(--mono);font-size:9px;letter-spacing:.06em}
+#sec-dashboard .db-v2-legacy{display:none!important}
+@media(min-width:900px){
+  .desktop-main:has(#sec-dashboard.active){grid-template-columns:minmax(0,1fr)!important}
+  .desktop-main:has(#sec-dashboard.active) #desktop-right-panel{display:none!important}
+  #sec-dashboard .db-v2-shell{padding:2px 0 0}
+}
+@media(max-width:899px){
+  #app:has(#sec-dashboard.active) > .app-header{display:none}
+  #sec-dashboard .db-v2-shell{width:100%}
+  #sec-dashboard .db-v2-topline{padding-bottom:13px}
+  #sec-dashboard .db-v2-greeting-row{padding:24px 0 19px}
+  #sec-dashboard .db-v2-add{padding:6px 8px;font-size:8px}
+  #sec-dashboard .db-v2-race-wrap{margin-bottom:16px}
+  #sec-dashboard .db-v2-race{padding:15px}
+  #sec-dashboard .db-v2-block{padding:19px 0}
+  #sec-dashboard .db-v2-week-grid{gap:7px}
+  #sec-dashboard .db-v2-week-cell span{font-size:7px;letter-spacing:.075em}
+  #sec-dashboard .db-v2-week-cell strong{font-size:17px}
+  #sec-dashboard .db-v2-context-copy{font-size:13px}
+  #sec-dashboard .db-v2-context-foot{align-items:flex-start;flex-direction:column}
+  #sec-dashboard .db-v2-coach-cta{padding-left:0}
+}
+@media(max-width:360px){
+  #sec-dashboard .db-v2-week-grid{gap:4px}
+  #sec-dashboard .db-v2-week-cell strong{font-size:15px}
+  #sec-dashboard .db-v2-date{font-size:8px}
+}
+
 </style>
 </head>
 <body>
@@ -1019,136 +1088,74 @@ button:not(:disabled),[role="button"],[onclick]{transition-timing-function:var(-
   <div class="desktop-content" id="desktop-content">
   <div class="scroll-area" id="scroll-area">
     <!-- DASHBOARD -->
-    <div id="sec-dashboard" class="section active">
-      <div class="section-title">
-        <span>Status</span>
-        <button class="btn btn-ghost" style="font-size:11px;padding:6px 12px" onclick="openModal('modal-log')">+ Treino</button>
-      </div>
-
-      <div class="db-desktop-grid">
-      <!-- v0.9.3 (P0): Ciclo de prova — card exibido quando a data da prova passa e
-           o strategyCycle muda para COMPLETED. Ainda não gera plano novo automaticamente,
-           apenas detecta o fim do ciclo e oferece os próximos passos. -->
-      <div id="db-cycle-completed-card" class="card db-col-full" style="display:none;margin-bottom:12px;border-color:rgba(46,232,196,0.25);background:var(--teal-dim)">
-        <div style="font-size:28px;margin-bottom:6px">🏁</div>
-        <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:var(--teal)">Parabéns pela conclusão do ciclo.</div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:14px" id="db-cycle-completed-sub">Sua prova já passou. Hora de fechar esse capítulo.</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" style="flex:1;font-size:11px" onclick="openCycleResultModal()">Registrar resultado</button>
-          <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="startNewCycleGoal()">Criar novo objetivo</button>
+    <div id="sec-dashboard" class="section active dashboard-v2">
+      <div class="db-v2-shell">
+        <div class="db-v2-topline">
+          <span class="db-v2-brand"><span class="db-v2-brand-dot"></span>PACEMAKER</span>
+          <span class="db-v2-weekstamp" id="db-week-number">SEMANA --</span>
         </div>
-      </div>
 
-      <!-- Weekly Report (Fase 5) -->
-      <div id="db-weekly-report" class="db-col-full"></div>
-
-      <!-- Hero row -->
-      <div class="grid2 db-col-full" id="db-hero-row" style="margin-bottom:12px">
-        <div class="card" id="db-race-card" style="border-color:rgba(232,245,90,0.2);background:var(--accent-dim)">
-          <div class="label" id="db-race-label">Próxima prova</div>
-          <div class="big-num" id="db-days" style="color:var(--accent);font-size:32px">--</div>
-          <div class="sub" id="db-race-date">configurar data</div>
+        <div class="db-v2-greeting-row">
+          <div>
+            <div class="db-v2-kicker">SEU RITMO. SUA SEMANA.</div>
+            <h1 class="db-v2-greeting" id="db-greeting">BOM DIA, ATLETA</h1>
+          </div>
+          <button class="btn btn-ghost db-v2-add" onclick="openModal('modal-log')">+ TREINO</button>
         </div>
-        <div class="card" id="readiness-card">
-          <div class="label">Prontidão</div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-            <div class="readiness-ring">
-              <svg viewBox="0 0 80 80" width="80" height="80">
-                <circle class="ring-bg" cx="40" cy="40" r="32"/>
-                <circle class="ring-fill" id="ring-fill" cx="40" cy="40" r="32" stroke-dasharray="201" stroke-dashoffset="201"/>
-              </svg>
-              <div class="readiness-val" id="readiness-val" style="color:var(--teal)">--</div>
-            </div>
+
+        <div id="db-cycle-completed-card" class="card db-v2-cycle" style="display:none">
+          <div style="font-size:24px;margin-bottom:6px">🏁</div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:4px;color:var(--teal)">Parabéns pela conclusão do ciclo.</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:14px" id="db-cycle-completed-sub">Sua prova já passou. Hora de fechar esse capítulo.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" style="flex:1;font-size:11px" onclick="openCycleResultModal()">Registrar resultado</button>
+            <button class="btn btn-ghost" style="flex:1;font-size:11px" onclick="startNewCycleGoal()">Criar novo objetivo</button>
+          </div>
+        </div>
+
+        <div id="db-hero-row" class="db-v2-race-wrap">
+          <div class="db-v2-race" id="db-race-card">
             <div>
-              <div id="readiness-label" style="font-size:11px;color:var(--text2);line-height:1.4"></div>
+              <div class="db-v2-race-label" id="db-race-label">PRÓXIMA PROVA</div>
+              <div class="db-v2-race-date" id="db-race-date">Configure sua prova</div>
             </div>
+            <div class="db-v2-countdown" id="db-days">--</div>
           </div>
         </div>
-      </div>
-      <!-- KM stats -->
-      <div class="grid3 db-col-full" style="margin-bottom:12px">
-        <div class="card" style="padding:12px">
-          <div class="label">Semana</div>
-          <div class="med-num" id="db-week-km" style="color:var(--blue)">0</div>
-          <div class="sub" id="db-week-goal">km</div>
-        </div>
-        <div class="card" style="padding:12px">
-          <div class="label">Mês</div>
-          <div class="med-num" id="db-month-km" style="color:var(--purple)">0</div>
-          <div class="sub">/ 190 km</div>
-        </div>
-        <div class="card" style="padding:12px">
-          <div class="label">Total</div>
-          <div class="med-num" id="db-total-km" style="color:var(--teal)">0</div>
-          <div class="sub">km acum.</div>
-        </div>
-      </div>
-      <!-- Execution card (planned vs actual) -->
-      <div class="card db-col-full" id="db-exec-card" style="margin-bottom:12px"></div>
-      <!-- Monthly progress -->
-      <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-          <div class="label">Meta mensal · 190 km</div>
-          <span class="badge badge-orange" id="db-month-pct">0%</span>
-        </div>
-        <div class="week-bar">
-          <div class="week-bar-fill" id="db-month-bar" style="width:0%">
-            <span id="db-month-bar-text">0 km</span>
+
+        <section class="db-v2-block db-v2-next" id="db-next-card" aria-labelledby="db-next-heading">
+          <div class="db-v2-block-head">
+            <div class="db-v2-label" id="db-next-heading">PRÓXIMO TREINO</div>
+            <div class="db-v2-date" id="db-next-date">—</div>
           </div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3)">
-          <span>0</span><span id="db-month-remain">190 km restantes</span><span>190</span>
-        </div>
-      </div>
-      <!-- v1.0 (Commit 4): "Progresso da prova" — antes fixo em "Sub 4h"/"3h58"/"5:41"
-           independente do objetivo real do atleta. Agora title/meta/pace são
-           preenchidos dinamicamente por renderDashboardBase() a partir da
-           Memória do Atleta (state.config.goalType/raceName + athleteProfile.targetTime).
-           Oculto por completo para objetivo de saúde/condicionamento (sem distância de prova). -->
-      <div class="card" id="db-goal-progress-card" style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="label" id="db-goal-progress-label">Progresso da prova</div>
-          <span class="badge badge-blue" id="db-sub4-badge">Em progresso</span>
-        </div>
-        <div class="grid3">
-          <div style="text-align:center;padding:10px 6px;background:rgba(255,255,255,0.03);border-radius:8px">
-            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Previsto</div>
-            <div class="small-num" id="db-predicted" style="color:var(--orange)">--</div>
+          <div class="db-v2-workout-title" id="db-next-title">—</div>
+          <div class="db-v2-workout-detail" id="db-next-detail">—</div>
+          <button class="btn btn-primary db-v2-cta" onclick="openLogFromPlan()">VER TREINO <span aria-hidden="true">→</span></button>
+        </section>
+
+        <section class="db-v2-block db-v2-week" id="db-exec-card" aria-label="Resumo da semana"></section>
+
+        <section class="db-v2-block db-v2-context" id="db-context-card" aria-labelledby="db-context-heading">
+          <div class="db-v2-label" id="db-context-heading">CONTEXTO</div>
+          <p class="db-v2-context-copy" id="db-context-text">Carregando seu resumo semanal…</p>
+          <div class="db-v2-context-foot">
+            <span id="db-context-readiness">PRONTIDÃO —</span>
+            <button class="btn btn-ghost db-v2-coach-cta" onclick="goTo('sec-coach')">CONVERSAR COM COACH <span aria-hidden="true">→</span></button>
           </div>
-          <div style="text-align:center;padding:10px 6px;background:var(--accent-dim);border:0.5px solid rgba(232,245,90,0.2);border-radius:8px">
-            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Meta</div>
-            <div class="small-num" id="db-goal-target" style="color:var(--accent)">--</div>
-          </div>
-          <div style="text-align:center;padding:10px 6px;background:rgba(255,255,255,0.03);border-radius:8px">
-            <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">Pace alvo</div>
-            <div class="small-num" id="db-goal-pace" style="color:var(--teal)">--</div>
-          </div>
-        </div>
-        <div class="pbar-wrap">
-          <div class="pbar-fill" id="db-sub4-bar" style="transform:scaleX(0);background:linear-gradient(90deg,var(--purple),var(--blue))"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--text3)">
-          <span>Início</span><span id="db-gap-closed">Gap a fechar</span><span id="db-goal-progress-end-label">Meta</span>
-        </div>
+        </section>
       </div>
-      <!-- Next workout -->
-      <div class="card card-accent db-col-full" id="db-next-card">
-        <div class="label">Próximo treino sugerido</div>
-        <div id="db-next-title" style="font-size:15px;font-weight:700;margin-bottom:4px">–</div>
-        <div id="db-next-detail" style="font-family:var(--mono);font-size:11px;color:var(--text2)">–</div>
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-          <button class="btn btn-primary" style="font-size:12px;padding:8px 16px;flex:1" onclick="openLogFromPlan()">Registrar treino</button>
-          <button class="btn btn-ghost" style="font-size:12px;padding:8px 16px;flex:1" onclick="goTo('sec-coach');setTimeout(()=>document.getElementById('plan-km-goal').focus(),300)">🗓 Planejar semana</button>
+
+      <!-- Legacy data targets remain available to the existing renderer; hidden, not removed. -->
+      <div class="db-v2-legacy" aria-hidden="true">
+        <div id="db-weekly-report"></div>
+        <div id="readiness-card">
+          <div class="readiness-ring"><svg viewBox="0 0 80 80" width="80" height="80"><circle class="ring-bg" cx="40" cy="40" r="32"/><circle class="ring-fill" id="ring-fill" cx="40" cy="40" r="32" stroke-dasharray="201" stroke-dashoffset="201"/></svg><div id="readiness-val">--</div></div>
+          <div id="readiness-label"></div>
         </div>
-      </div>
-      <!-- Recent workouts -->
-      <div class="db-col-full">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:16px 0 10px">
-          <div style="font-size:13px;font-weight:700">Treinos recentes</div>
-          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="goTo('sec-log')">Ver todos</button>
-        </div>
+        <span id="db-week-km"></span><span id="db-week-goal"></span><span id="db-month-km"></span><span id="db-total-km"></span>
+        <span id="db-month-pct"></span><div id="db-month-bar"><span id="db-month-bar-text"></span></div><span id="db-month-remain"></span>
+        <div id="db-goal-progress-card"><span id="db-goal-progress-label"></span><span id="db-sub4-badge"></span><span id="db-predicted"></span><span id="db-goal-target"></span><span id="db-goal-pace"></span><span id="db-sub4-bar"></span><span id="db-gap-closed"></span><span id="db-goal-progress-end-label"></span></div>
         <div id="db-recent-list"></div>
-      </div>
       </div>
     </div>
 
@@ -2659,6 +2666,24 @@ function renderWeeklyReport() {
 }
 
 function renderDashboardBase() {
+  // Dashboard-only presentation labels; these do not affect training decisions or calculations.
+  const dashboardDate = new Date(today()+'T12:00:00');
+  const isoWeekDate = new Date(dashboardDate);
+  isoWeekDate.setDate(isoWeekDate.getDate() + 4 - (isoWeekDate.getDay() || 7));
+  const yearStart = new Date(isoWeekDate.getFullYear(), 0, 1);
+  const dashboardWeekNo = Math.ceil((((isoWeekDate - yearStart) / 86400000) + 1) / 7);
+  const greetingHour = new Date().getHours();
+  const greetingText = greetingHour < 12 ? 'BOM DIA' : greetingHour < 18 ? 'BOA TARDE' : 'BOA NOITE';
+  const athleteName = state.config.name || 'Caio';
+  const greetingEl = document.getElementById('db-greeting');
+  if(greetingEl) greetingEl.textContent = `${greetingText}, ${athleteName}`;
+  const weekStampEl = document.getElementById('db-week-number');
+  if(weekStampEl) weekStampEl.textContent = `SEMANA ${dashboardWeekNo}`;
+  const weekdayNames = ['DOMINGO','SEGUNDA','TERÇA','QUARTA','QUINTA','SEXTA','SÁBADO'];
+  const monthShortNames = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  const nextDateEl = document.getElementById('db-next-date');
+  if(nextDateEl) nextDateEl.textContent = `HOJE · ${weekdayNames[dashboardDate.getDay()]} · ${String(dashboardDate.getDate()).padStart(2,'0')} ${monthShortNames[dashboardDate.getMonth()]}`;
+
   // Weekly Report card (existia antes do v0.8.5 — restaurado)
   renderWeeklyReport();
 
@@ -2672,15 +2697,24 @@ function renderDashboardBase() {
     if(raceCard) raceCard.style.display = '';
     if(heroRow) heroRow.style.gridTemplateColumns = '1fr 1fr';
     const dt = new Date(rc+'T12:00:00');
-    const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    const fullDate = `${dt.getDate()} ${monthNames[dt.getMonth()]} ${dt.getFullYear()}`;
-    document.getElementById('db-race-label').textContent = 'Próxima prova';
-    document.getElementById('db-days').textContent = days>0?days+' dias':'Dia D! 🏁';
-    document.getElementById('db-race-date').textContent = (state.config.raceName||'Prova') + ' · ' + fullDate;
+    const monthNames = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+    const fullDate = `${String(dt.getDate()).padStart(2,'0')} ${monthNames[dt.getMonth()]} ${dt.getFullYear()}`;
+    const goalNames = {marathon:'MARATONA',half:'MEIA MARATONA','10k':'10 KM','5k':'5 KM',health:'SAÚDE'};
+    document.getElementById('db-race-label').textContent = (state.config.raceName || goalNames[state.config.goalType] || 'PRÓXIMA PROVA').toUpperCase();
+    document.getElementById('db-days').textContent = days>0?`${days} DIAS`:'DIA DA PROVA';
+    document.getElementById('db-race-date').textContent = fullDate;
     document.getElementById('header-countdown').textContent = (days>0?days+'d':'Dia D') + ' 🏁';
   } else {
-    if(raceCard) raceCard.style.display = 'none';
+    // Display-only empty state for the race panel; no goal or training setting is changed.
+    const goalNames = {marathon:'MARATONA',half:'MEIA MARATONA','10k':'10 KM','5k':'5 KM',health:'OBJETIVO DE CORRIDA'};
+    if(raceCard) raceCard.style.display = '';
     if(heroRow) heroRow.style.gridTemplateColumns = '1fr';
+    const fallbackLabel = document.getElementById('db-race-label');
+    const fallbackDate = document.getElementById('db-race-date');
+    const fallbackDays = document.getElementById('db-days');
+    if(fallbackLabel) fallbackLabel.textContent = goalNames[state.config.goalType] || 'PRÓXIMO OBJETIVO';
+    if(fallbackDate) fallbackDate.textContent = state.config.goalType === 'health' ? 'Configure seu objetivo nas Configurações' : 'Defina a data da prova nas Configurações';
+    if(fallbackDays) fallbackDays.textContent = 'DATA A DEFINIR';
     document.getElementById('header-countdown').textContent = '';
   }
 
@@ -2761,6 +2795,13 @@ function renderDashboardBase() {
   document.getElementById('readiness-val').style.color = rs>=70?'var(--teal)':rs>=50?'var(--orange)':'var(--red)';
   const labels = ['','Recuperar','Treino leve','Moderado','Bom para treinar','Ótimo — vai fundo!'];
   document.getElementById('readiness-label').textContent = rs>=80?labels[5]:rs>=65?labels[4]:rs>=50?labels[3]:rs>=35?labels[2]:labels[1];
+  const contextText = wkmPlan > 0
+    ? `Você realizou ${wkm.toFixed(1)} km nesta semana e tem ${wkmPlan.toFixed(1)} km planejados para o restante.`
+    : `Você realizou ${wkm.toFixed(1)} km nesta semana, de uma meta de ${wg.toFixed(0)} km. Planeje os próximos treinos para acompanhar seu volume.`;
+  const contextEl = document.getElementById('db-context-text');
+  if(contextEl) contextEl.textContent = contextText;
+  const contextReadinessEl = document.getElementById('db-context-readiness');
+  if(contextReadinessEl) contextReadinessEl.textContent = `PRONTIDÃO · ${rs}/100`;
 
   // Weekly execution card (planned vs actual)
   const adherence = planAdherence();
@@ -2768,28 +2809,20 @@ function renderDashboardBase() {
   if(execEl) {
     const adh = adherence!==null ? adherence+'%' : '--';
     const adhColor = adherence===null?'var(--text3)':adherence>=80?'var(--teal)':adherence>=60?'var(--orange)':'var(--red)';
+    const weekProgressPct = Math.min(100, wg > 0 ? (wkm / wg * 100) : 0);
+    const weekNo = dashboardWeekNo;
     execEl.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="label" style="margin-bottom:0">Execução semanal</div>
-        <span class="badge" style="color:${adhColor};border-color:${adhColor}33;background:${adhColor}11">Aderência ${adh}</span>
+      <div class="db-v2-week-head">
+        <div class="db-v2-label">SEMANA</div>
+        <div class="db-v2-date">${weekNo} · META ${wg.toFixed(0)} KM</div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">
-        <div style="padding:8px 4px;background:rgba(255,255,255,0.03);border-radius:8px">
-          <div style="font-size:8px;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Executado</div>
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--teal)">${wkm.toFixed(1)}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km reais</div>
-        </div>
-        <div style="padding:8px 4px;background:rgba(255,255,255,0.03);border-radius:8px">
-          <div style="font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Planejado</div>
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text2)">${wRemain.toFixed(1)}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km restantes</div>
-        </div>
-        <div style="padding:8px 4px;background:var(--orange-dim);border:0.5px solid rgba(255,140,66,0.2);border-radius:8px">
-          <div style="font-size:8px;color:var(--orange);text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Faltam</div>
-          <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--orange)">${wRemain.toFixed(0)}</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3)">km / meta</div>
-        </div>
-      </div>`;
+      <div class="db-v2-week-grid">
+        <div class="db-v2-week-cell"><span>META</span><strong>${wg.toFixed(0)} KM</strong></div>
+        <div class="db-v2-week-cell"><span>PLANEJADO</span><strong>${wkmPlan.toFixed(0)} KM</strong></div>
+        <div class="db-v2-week-cell"><span>REALIZADO</span><strong>${wkm.toFixed(0)} KM</strong></div>
+      </div>
+      <div class="db-v2-progress" role="progressbar" aria-label="Progresso da meta semanal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(weekProgressPct)}"><div class="db-v2-progress-fill" style="width:${weekProgressPct}%"></div></div>
+      <div class="db-v2-week-foot"><span>${wkm.toFixed(1)} KM REALIZADOS DE ${wg.toFixed(0)} KM</span><span>${Math.round(weekProgressPct)}%</span></div>`;
   }
 
   // Next workout — pre-filled from today's plan
