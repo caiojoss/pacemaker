@@ -1413,6 +1413,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
         <div class="label" style="margin-bottom:10px">Dados do app</div>
         <button class="btn btn-danger btn-full" onclick="if(confirm('Apagar todos os treinos? Isso não pode ser desfeito.'))clearData()">Limpar todos os treinos</button>
       </div>
+      <!-- v1.0 (Issue 03): entrada única e discreta de Ajuda/Feedback — fica
+           em Configurações, junto dos outros cards de utilidade do app, sem
+           transformar Dashboard/Planner em telas de formulário. -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="label" style="margin-bottom:10px">🆘 Ajuda &amp; Feedback</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:14px;line-height:1.6">Encontrou um problema ou tem uma sugestão? Conta pra gente.</div>
+        <button class="btn btn-ghost btn-full" onclick="openFeedbackModal()">💬 Enviar feedback</button>
+      </div>
       <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:20px;padding-bottom:10px">PACEMAKER <span id="settings-version-label"></span> · Seus dados ficam no dispositivo</div>
     </div>
 
@@ -1796,6 +1804,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--d
       <button class="btn btn-ghost" onclick="coachPlanToPlanner()" style="color:var(--accent);border-color:rgba(232,245,90,0.3)">Ajustar no Planner</button>
     </div>
     <button class="btn btn-primary btn-full" onclick="confirmCoachPlan()">Confirmar e Salvar no Calendário</button>
+  </div>
+</div>
+
+<!-- MODAL: Feedback (Issue 03) -->
+<div class="modal-overlay" id="modal-feedback">
+  <div class="modal">
+    <div class="modal-title">
+      <span>Ajuda &amp; Feedback</span>
+      <button class="modal-close" onclick="closeModal('modal-feedback')">×</button>
+    </div>
+    <div class="form-group" style="margin-bottom:14px">
+      <label class="form-label">Tipo</label>
+      <div style="display:flex;gap:8px;margin-top:6px" id="feedback-type-row">
+        <button class="rpe-btn sel" onclick="selectFeedbackType('problema',this)" style="flex:1;padding:10px">🐛 Problema</button>
+        <button class="rpe-btn" onclick="selectFeedbackType('sugestao',this)" style="flex:1;padding:10px">💡 Sugestão</button>
+        <button class="rpe-btn" onclick="selectFeedbackType('duvida',this)" style="flex:1;padding:10px">❓ Dúvida</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Descrição</label>
+      <textarea class="form-textarea" id="feedback-message" rows="4" maxlength="2000" placeholder="Ex: O Planner mostrou 30 km, mas depois de confirmar apareceu 35 km."></textarea>
+    </div>
+    <div id="feedback-status" style="display:none;margin-bottom:10px"></div>
+    <button class="btn btn-primary btn-full" id="feedback-submit-btn" onclick="submitFeedback()">Enviar</button>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--text3);margin-top:10px;text-align:center;line-height:1.5">
+      Enviamos junto: versão do app, tela atual e dados básicos do dispositivo — nunca senhas, chaves ou dados de treino.
+    </div>
   </div>
 </div>
 
@@ -4571,7 +4606,20 @@ function previewWeekPlan() {
   // v1.0 (Issue 01): passa targetWs para que um target já confirmado para
   // esta semana específica prevaleça sobre uma nova sugestão do motor.
   const kmGoal = parseFloat(document.getElementById('plan-km-goal').value)||resolveWeeklyTargetSuggestion(targetWs);
-  const kmGoalSource = _kmGoalTouchedByUser ? 'manual' : 'suggested';
+  // v1.0 (Issue 01 — Risco/Pendência 1): quando o campo NÃO foi tocado pelo
+  // usuário, o número exibido pode ter duas origens bem diferentes: (a) uma
+  // sugestão fresca do motor (não há target persistido para esta semana), ou
+  // (b) um target JÁ CONFIRMADO anteriormente para esta mesma semana (fix da
+  // Issue 01 acima). Antes desta correção, o segundo caso era gravado como
+  // 'suggested' incondicionalmente — reabrir e reconfirmar uma semana que já
+  // era 'manual', sem editar nada, apagava silenciosamente esse fato. Agora,
+  // sem edição do usuário, herdamos a proveniência do target persistido
+  // (se existir); só cai em 'suggested' quando não há nada persistido para
+  // herdar — que é exatamente quando o valor de fato veio do motor.
+  const persistedForWeek = getWeeklyTarget(targetWs);
+  const kmGoalSource = _kmGoalTouchedByUser
+    ? 'manual'
+    : (persistedForWeek.persisted ? persistedForWeek.source : 'suggested');
   const feeling = document.getElementById('plan-feeling').value;
   const notes = document.getElementById('plan-notes').value.trim();
   const c = buildCoachContext();
@@ -5920,6 +5968,128 @@ function saveAthleteMemory() {
 function clearData() {
   state.workouts = []; state.chatHistory = [];
   save(); showToast('Treinos apagados'); renderDashboard(); renderLog();
+}
+
+// ==================== FEEDBACK / REPORT BUG (Issue 03) ====================
+// v1.0 (Issue 03): coleta mínima de feedback dos testers do beta fechado.
+// Escrita direta no Firestore reaproveitando EXATAMENTE os mesmos
+// primitivos já usados por uploadToCloud()/config remota do Gemini —
+// window._fbDb/_fbDoc/_fbSetDoc — com um ID gerado no cliente, em vez de
+// importar addDoc()/collection() novos no módulo do Firebase (área
+// sensível, fora do escopo desta Issue). Sem Cloud Functions, sem upgrade
+// de plano, sem endpoint serverless novo: a única peça de infraestrutura
+// que este recurso exige é uma Firestore Security Rule para a coleção
+// `feedback` (create-only, allowlist de campos) — isso vive no console do
+// Firebase, fora deste arquivo, e é uma pendência explícita, não algo que
+// este código consiga garantir sozinho.
+let _feedbackType = 'problema';
+let _feedbackSubmitting = false;
+
+function openFeedbackModal() {
+  _feedbackType = 'problema';
+  document.querySelectorAll('#feedback-type-row .rpe-btn').forEach((b,i)=>b.classList.toggle('sel', i===0));
+  const msgEl = document.getElementById('feedback-message');
+  if(msgEl) msgEl.value = '';
+  const statusEl = document.getElementById('feedback-status');
+  if(statusEl) { statusEl.style.display='none'; statusEl.textContent=''; statusEl.className=''; }
+  const btn = document.getElementById('feedback-submit-btn');
+  if(btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
+  openModal('modal-feedback');
+}
+
+function selectFeedbackType(type, btn) {
+  _feedbackType = type;
+  document.querySelectorAll('#feedback-type-row .rpe-btn').forEach(b=>b.classList.remove('sel'));
+  if(btn) btn.classList.add('sel');
+}
+
+// Heurísticas simples de user-agent — suficientes para triagem de bug
+// report com 5 testers conhecidos. Sem nenhuma lib nova de UA-parsing.
+function detectBrowserLabel() {
+  const ua = navigator.userAgent || '';
+  if(/Edg\//.test(ua)) return 'Edge';
+  if(/OPR\//.test(ua)) return 'Opera';
+  if(/SamsungBrowser/.test(ua)) return 'Samsung Internet';
+  if(/CriOS/.test(ua)) return 'Chrome (iOS)';
+  if(/FxiOS/.test(ua)) return 'Firefox (iOS)';
+  if(/Firefox\//.test(ua)) return 'Firefox';
+  if(/Chrome\//.test(ua)) return 'Chrome';
+  if(/Safari\//.test(ua) && !/Chrome/.test(ua)) return 'Safari';
+  return 'Desconhecido';
+}
+function detectDeviceLabel() {
+  const ua = navigator.userAgent || '';
+  if(/Android/.test(ua)) return 'Android';
+  if(/iPhone|iPad|iPod/.test(ua)) return 'iOS';
+  if(/Windows/.test(ua)) return 'Windows';
+  if(/Macintosh|Mac OS X/.test(ua)) return 'Mac';
+  if(/Linux/.test(ua)) return 'Linux';
+  return 'Desconhecido';
+}
+
+// Allowlist EXPLÍCITO — nunca espalha state/athleteProfile/stravaConfig
+// aqui. Só estes 8 campos, nada além disso: nunca senha, API key, token,
+// secret, conteúdo do Firestore ou histórico do usuário.
+function buildFeedbackPayload(message) {
+  return {
+    type: _feedbackType,
+    message: message.slice(0, 2000),
+    version: PACEMAKER_VERSION,
+    screen: document.querySelector('.section.active')?.id || 'unknown',
+    browser: detectBrowserLabel(),
+    device: detectDeviceLabel(),
+    uid: state.user?.uid || null,
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function submitFeedback() {
+  if(_feedbackSubmitting) return; // guarda contra duplo clique/duplo submit
+  const msgEl = document.getElementById('feedback-message');
+  const statusEl = document.getElementById('feedback-status');
+  const btn = document.getElementById('feedback-submit-btn');
+  const message = (msgEl?.value || '').trim();
+
+  if(!message) {
+    if(msgEl) shakeEl('feedback-message');
+    if(statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.className = 'strava-status err';
+      statusEl.textContent = 'Escreva uma descrição antes de enviar.';
+    }
+    return;
+  }
+
+  if(!window._fbDb || !window._fbDoc || !window._fbSetDoc) {
+    if(statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.className = 'strava-status err';
+      statusEl.textContent = 'Não foi possível enviar. Tente novamente.';
+    }
+    return;
+  }
+
+  _feedbackSubmitting = true;
+  if(btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+  if(statusEl) { statusEl.style.display='block'; statusEl.className='strava-status info'; statusEl.textContent='Enviando...'; }
+
+  try {
+    const payload = buildFeedbackPayload(message);
+    const feedbackId = 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+    const ref = window._fbDoc(window._fbDb, 'feedback', feedbackId);
+    await window._fbSetDoc(ref, payload);
+
+    if(statusEl) { statusEl.className='strava-status ok'; statusEl.textContent='Obrigado! Seu feedback foi enviado.'; }
+    if(msgEl) msgEl.value = '';
+    showToast('Feedback enviado — obrigado! 🙏');
+    setTimeout(()=>{ closeModal('modal-feedback'); }, 1600);
+  } catch(e) {
+    console.warn('[PM:Feedback] Falha ao enviar:', e.message);
+    if(statusEl) { statusEl.className='strava-status err'; statusEl.textContent='Não foi possível enviar. Tente novamente.'; }
+    if(btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
+  } finally {
+    _feedbackSubmitting = false;
+  }
 }
 
 // ==================== STRAVA OAUTH ====================
