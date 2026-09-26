@@ -5675,6 +5675,14 @@ async function callGeminiDirect(key, systemPrompt, history, userText, model='gem
   } else if(msg.includes('API_KEY_INVALID')) {
     friendly = '⚠️ Gemini API key inválida. Verifique em Configurações.';
     localStorage.removeItem(GEMINI_KEY); updateGeminiBadge();
+  } else if(res.status === 503 || errBody.error?.status === 'UNAVAILABLE' || /overloaded|high demand|unavailable|try again later/i.test(msg)) {
+    // v1.0 (último ajuste pré-beta): erro de indisponibilidade temporária /
+    // alta demanda do provedor de IA — este é exatamente o texto bruto do
+    // Gemini que aparecia cru na tela ("This model is currently experiencing
+    // high demand..."), expondo nome do provedor e mensagem técnica. Mapeado
+    // especificamente para uma mensagem nativa do Pacemaker; os demais tipos
+    // de erro (quota, API key inválida, desconhecido) continuam intocados.
+    friendly = '⚠️ O Coach está temporariamente indisponível.\nEstamos enfrentando uma alta demanda no serviço de IA. Tente novamente em alguns instantes.';
   } else {
     friendly = `⚠️ Gemini: ${msg}. Tente novamente.`;
   }
