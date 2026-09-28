@@ -2561,26 +2561,15 @@ function getZ2Reference() {
   };
 }
 
-function nextSuggestedWorkout() {
-  const d = new Date();
-  const tStr = today();
-  const isWork = isWorkDay(tStr);
-  const weekKm = kmThisWeek();
-  const weekGoal = state.config.weekGoal || 52;
-  const longoes = state.workouts.filter(w=>w.type==='long').sort((a,b)=>b.date.localeCompare(a.date));
-  const lastLongDate = longoes.length>0 ? longoes[0].date : null;
-  const daysSinceLastLong = lastLongDate ? daysBetween(lastLongDate,tStr) : 99;
-  const z2ref = getZ2Reference();
-
-  if(!isWork && daysSinceLastLong >= 6) return {title:'Longão Z2',detail:`${Math.min(22,Math.round((weekGoal-weekKm)*0.5)+14)}km · ${z2ref.text}`,type:'long'};
-  if(!isWork) return {title:'Progressivo / Tiros',detail:'8–14km · Z2 + 4x1km no pace alvo',type:'progressivo'};
-  // v0.9.3 (P0): antes esta sugestão assumia musculação em TODA manhã de trabalho,
-  // mesmo para corredores que nunca disseram que treinam força. Agora respeita
-  // athleteProfile.doesStrength (default true só para perfis legados/migrados).
-  const doesStrength = state.athleteProfile?.doesStrength !== false;
-  const hasMorning = state.workouts.find(w=>w.date===tStr&&w.type==='strength');
-  if(isWork && doesStrength && !hasMorning) return {title:'Musculação (manhã)',detail:'40 min · Foco em glúteos, core e estabilidade',type:'strength'};
-  return {title:'Corrida Z2',detail:`8–10km fácil · ${z2ref.text}`,type:'z2'};
+function nextSuggestedWorkout(now = new Date()) {
+  // Planner sessions are stored as date-only workout records with planned:true.
+  // Since no scheduled hour exists, only dates after the current app date can
+  // be guaranteed to be upcoming; never synthesize a workout from training rules.
+  const currentDate = now.toISOString().split('T')[0];
+  const restTypes = new Set(['rest','off','dayoff','rest-day','descanso','folga']);
+  return state.workouts
+    .filter(w => isPlanned(w) && !!w.type && !restTypes.has(String(w.type).toLowerCase()) && /^\d{4}-\d{2}-\d{2}$/.test(w.date || '') && w.date > currentDate)
+    .sort((a,b) => a.date.localeCompare(b.date))[0] || null;
 }
 
 // ==================== RENDER DASHBOARD ====================
@@ -2825,10 +2814,41 @@ function renderDashboardBase() {
       <div class="db-v2-week-foot"><span>${wkm.toFixed(1)} KM REALIZADOS DE ${wg.toFixed(0)} KM</span><span>${Math.round(weekProgressPct)}%</span></div>`;
   }
 
-  // Next workout — pre-filled from today's plan
+  // Next workout — use the first real future session already stored by Planner.
   const nw = nextSuggestedWorkout();
-  document.getElementById('db-next-title').textContent = nw.title;
-  document.getElementById('db-next-detail').textContent = nw.detail;
+  const nextTitleEl = document.getElementById('db-next-title');
+  const nextDetailEl = document.getElementById('db-next-detail');
+  const nextButton = document.querySelector('#db-next-card .db-v2-cta');
+  if(nw) {
+    if(nextTitleEl) nextTitleEl.textContent = typeLabel(nw.type, nw);
+    const details = [];
+    if(Number(nw.dist) > 0) details.push(`${Number(nw.dist).toFixed(1)} KM`);
+    if(nw.pace) details.push(nw.pace);
+    else if(nw.notes) details.push(nw.notes);
+    if(nextDetailEl) nextDetailEl.textContent = details.join(' · ') || 'Detalhes não informados no Planner.';
+    if(nextDateEl) {
+      const scheduledDate = new Date(`${nw.date}T12:00:00`);
+      const dayLabel = `${weekdayNames[scheduledDate.getDay()].slice(0,3)} · ${String(scheduledDate.getDate()).padStart(2,'0')} ${monthShortNames[scheduledDate.getMonth()]}`;
+      nextDateEl.textContent = dayLabel;
+    }
+    if(nextButton) {
+      nextButton.innerHTML = 'VER TREINO <span aria-hidden="true">→</span>';
+      nextButton.style.display = '';
+      nextButton.onclick = () => openDayDrawer(nw.date);
+    }
+  } else {
+    if(nextTitleEl) nextTitleEl.textContent = 'Nenhum treino futuro';
+    if(nextDetailEl) nextDetailEl.textContent = 'Não há sessões planejadas para os próximos dias.';
+    if(nextDateEl) nextDateEl.textContent = 'SEM PRÓXIMA SESSÃO';
+    if(nextButton) {
+      nextButton.innerHTML = 'NOVO TREINO <span aria-hidden="true">→</span>';
+      nextButton.style.display = '';
+      nextButton.onclick = () => {
+        prepLogModal(null);
+        openModal('modal-log');
+      };
+    }
+  }
 
   // Recent — completed only
   const recents = state.workouts.filter(w=>isCompleted(w)).slice(0,3);
