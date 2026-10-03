@@ -8081,6 +8081,12 @@ drawerOverlay.querySelector('.drawer').addEventListener('touchend',e=>{
           <div class="ob-chip" data-val="advanced" onclick="selectChip('ob-level-chips',this)">⚡ Avançado<br><span style="font-size:10px;color:var(--text3)">Mais de 2 anos</span></div>
         </div>
       </div>
+      <!-- v1.0 (Feedback 1A): volume atual real — teto absoluto da semana 1. -->
+      <div class="ob-field" id="ob-currentkm-field">
+        <div class="ob-label" id="ob-currentkm-label">Quantos km você corre por semana hoje?</div>
+        <input class="ob-input" id="ob-currentkm" type="number" inputmode="decimal" min="0" max="300" step="1" placeholder="Ex: 40 — ou 0 se não corre"/>
+        <div id="ob-currentkm-hint" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">Sua primeira semana nunca passa desse volume. É o que protege você de lesão.</div>
+      </div>
       <div class="ob-field" id="ob-besttime-field" style="display:none">
         <div class="ob-label">Melhor tempo em prova (opcional)</div>
         <input class="ob-input" id="ob-besttime" type="text" placeholder="Ex: 2h38 (meia) ou 5h10 (maratona)"/>
@@ -8218,6 +8224,7 @@ const _obData = {
   name:'', weight:0, height:0,
   level:'intermediate', bestTime:'',
   raceType:'marathon', targetTime:'', raceDate:'',
+  currentWeeklyKm:null, // v1.0 (Feedback 1A): null = não informado (só permitido para iniciante)
   daysPerWeek:4, scale:'5x2', scaleStart:'', customWorkDays:[],
   doesStrength:true, strengthSplit:'ABC' // v0.9.3 (P0): musculação agora é explícita, não assumida
 };
@@ -8356,6 +8363,7 @@ function renderObStep(step) {
   if(step === 2) {
     const btField = document.getElementById('ob-besttime-field');
     if(btField) btField.style.display = _obData.level !== 'beginner' ? 'block' : 'none';
+    updateCurrentKmField();
   }
 }
 
@@ -8383,7 +8391,43 @@ function validateObStep(step) {
     const name = document.getElementById('ob-name').value.trim();
     if(!name) { shakeEl('ob-name'); return false; }
   }
+  // v1.0 (Feedback 1A): volume atual é obrigatório para intermediário/avançado
+  // (sem ele não há teto para a semana 1) e opcional para iniciante (campo vazio
+  // = plano de adaptação). Aceita 0. Nunca aceita negativo ou valor absurdo.
+  if(step === 2) {
+    const lc = document.querySelector('#ob-level-chips .ob-chip.sel');
+    const level = lc ? lc.dataset.val : _obData.level;
+    const raw = document.getElementById('ob-currentkm').value.trim();
+    const hint = document.getElementById('ob-currentkm-hint');
+    let ok = true, msg = '';
+    if(raw === '') {
+      if(level !== 'beginner') { ok = false; msg = 'Informe seu volume atual (use 0 se não corre hoje).'; }
+    } else {
+      const n = parseFloat(raw);
+      if(!isFinite(n) || n < 0 || n > 300) { ok = false; msg = 'Informe um valor entre 0 e 300 km por semana.'; }
+    }
+    if(!ok) {
+      shakeEl('ob-currentkm');
+      if(hint) { hint.textContent = msg; hint.style.color = 'var(--red)'; }
+      return false;
+    }
+    if(hint) { hint.style.color = ''; updateCurrentKmField(); }
+  }
   return true;
+}
+
+// v1.0 (Feedback 1A): textos do campo de volume atual conforme o nível escolhido.
+function updateCurrentKmField() {
+  const lc = document.querySelector('#ob-level-chips .ob-chip.sel');
+  const level = lc ? lc.dataset.val : _obData.level;
+  const label = document.getElementById('ob-currentkm-label');
+  const hint = document.getElementById('ob-currentkm-hint');
+  if(label) label.textContent = level === 'beginner'
+    ? 'Quantos km você corre por semana hoje? (opcional)'
+    : 'Quantos km você corre por semana hoje?';
+  if(hint && hint.style.color !== 'var(--red)') hint.textContent = level === 'beginner'
+    ? 'Se ainda não corre, deixe em branco: começamos com um plano de adaptação.'
+    : 'Sua primeira semana nunca passa desse volume. É o que protege você de lesão.';
 }
 
 function shakeEl(id) {
@@ -8404,6 +8448,9 @@ function collectObStep(step) {
     const lc = document.querySelector('#ob-level-chips .ob-chip.sel');
     if(lc) _obData.level = lc.dataset.val;
     _obData.bestTime = document.getElementById('ob-besttime').value.trim();
+    const rawKm = document.getElementById('ob-currentkm').value.trim();
+    const km = parseFloat(rawKm);
+    _obData.currentWeeklyKm = (rawKm !== '' && isFinite(km) && km >= 0) ? km : null;
   }
   if(step === 3) {
     const rc = document.querySelector('#ob-race-chips .ob-chip.sel');
@@ -8443,6 +8490,7 @@ function selectChip(groupId, el) {
     _obData.level = el.dataset.val;
     const btField = document.getElementById('ob-besttime-field');
     if(btField) btField.style.display = el.dataset.val !== 'beginner' ? 'block' : 'none';
+    updateCurrentKmField();
   }
 }
 
@@ -8510,7 +8558,8 @@ function renderObSummary() {
 
   const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10k','5k':'5k',health:'Saúde e Condicionamento'};
   const weekKm = calcWeekGoalFromProfile(_obData);
-  const longKm = Math.round(weekKm * 0.35);
+  const timeBlock = isTimeBlockStart(_obData);
+  const longKm = calcOnboardingLongRunKm(weekKm);
   _obAiStrategy = null; // invalida cache anterior — o perfil pode ter mudado desde a última visita a esta tela
 
   document.getElementById('ob-summary').innerHTML = `
@@ -8520,17 +8569,17 @@ function renderObSummary() {
     </div>
     <div class="ob-summary-row">
       <span class="ob-summary-key">Volume inicial</span>
-      <span class="ob-summary-val" id="ob-summary-volume">${weekKm} km / semana</span>
+      <span class="ob-summary-val" id="ob-summary-volume">${timeBlock ? '3 sessões de 30 min' : weekKm + ' km / semana'}</span>
     </div>
     <div class="ob-summary-row">
       <span class="ob-summary-key">Treinos por semana</span>
-      <span class="ob-summary-val">${_obData.daysPerWeek}x</span>
+      <span class="ob-summary-val">${timeBlock ? 3 : _obData.daysPerWeek}x</span>
     </div>
     <div class="ob-summary-row">
       <span class="ob-summary-key">Longão inicial</span>
-      <span class="ob-summary-val" id="ob-summary-long">${longKm} km</span>
+      <span class="ob-summary-val" id="ob-summary-long">${timeBlock ? 'adaptação primeiro' : longKm + ' km'}</span>
     </div>
-    ${hasGeminiKey() ? `<div class="ob-summary-row" style="border-color:rgba(46,232,196,0.2);background:var(--teal-dim)">
+    ${hasGeminiKey() && !timeBlock ? `<div class="ob-summary-row" style="border-color:rgba(46,232,196,0.2);background:var(--teal-dim)">
       <span class="ob-summary-key" style="color:var(--teal)">✨ Coach IA</span>
       <span class="ob-summary-val" id="ob-summary-ai-status" style="font-size:11px;color:var(--teal)">calculando sua estratégia...</span>
     </div>` : ''}
@@ -8541,7 +8590,7 @@ function renderObSummary() {
   // reaproveitamos esse resultado em vez de gerar uma segunda estratégia
   // (que poderia divergir). Se a IA ainda não tiver respondido a tempo,
   // finishOnboarding() simplesmente espera a mesma Promise terminar.
-  if(hasGeminiKey()) {
+  if(hasGeminiKey() && !timeBlock) {
     _obAiStrategyPromise = generateStrategyAI({ profile: _obData, weekKm }).then(ai => {
       _obAiStrategy = ai;
       if(ai) patchObSummaryWithAI(ai);
@@ -8568,12 +8617,67 @@ function patchObSummaryWithAI(ai) {
 }
 
 // ── Volume calculation from profile ──────────────────────
+// v1.0 (Feedback 1A): a semana 1 nunca passa do volume semanal real do atleta.
+// Antes, o volume vinha só de nível × dias × tipo de prova (avançado, 6 dias,
+// maratona = 90 km, mesmo para quem corre ~70 km). Regras (Daniels' Running
+// Formula, 2ª ed. brasileira: corrida longa = 25–30% da milhagem semanal, 30% mais
+// provável para quem treina menos de 7 dias com milhagem relativamente baixa, teto de
+// 2h30; + decisão de produto):
+// - semana 1 <= volume atual informado;
+// - longão = 30% abaixo de 64 km/sem, 25% a partir de 64 km/sem. ATENÇÃO: o corte de
+//   64 km NÃO está no livro — é um parâmetro de produto (o livro só dá a faixa 25–30%
+//   e o exemplo 40 milhas = 25%). Qualquer das duas escolhas respeita o livro.
+//   O teto de 150 min também é do livro, mas depende do pace e não é aplicado aqui;
+// - sem volume atual (iniciante em branco, ou 0): plano de adaptação por TEMPO
+//   (corre/caminha, 3 sessões de 30 min), inspirado no nível branco I do livro.
+const ONBOARDING_HIGH_VOLUME_KM = 64;
+// Estimativa de produto (NÃO vem do livro, que trabalha em minutos): ~36 min de
+// corrida por semana em ritmo bem fácil ≈ 5 km. Existe só para alimentar metas.
+const ONBOARDING_BEGINNER_START_KM = 5;
+
+// true quando o atleta informou 0 km/semana, ou é iniciante e deixou em branco.
+// undefined (chamadores antigos, sem o campo) NÃO é "em branco": mantém a regra antiga.
+function isTimeBlockStart(data) {
+  const c = data.currentWeeklyKm;
+  if(c === 0) return true;
+  return c === null && data.level === 'beginner';
+}
+
 function calcWeekGoalFromProfile(data) {
+  if(isTimeBlockStart(data)) return ONBOARDING_BEGINNER_START_KM;
   const base = { beginner:20, intermediate:40, advanced:55 }[data.level] || 35;
   const daysMult = { 2:0.6, 3:0.8, 4:1.0, 5:1.2, 6:1.35 }[data.daysPerWeek] || 1.0;
   const raceMult = { '5k':0.7, '10k':0.85, half:1.0, marathon:1.2, health:0.65 }[data.raceType] || 1.0;
-  return Math.round(base * daysMult * raceMult / 5) * 5; // round to nearest 5
+  const byRules = Math.round(base * daysMult * raceMult / 5) * 5; // round to nearest 5
+  const cur = data.currentWeeklyKm;
+  if(typeof cur === 'number' && cur > 0) return Math.min(byRules, Math.max(1, Math.round(cur)));
+  return byRules;
 }
+
+// Teto do longão da semana 1 (arredondado para baixo: nunca passa do percentual).
+function calcOnboardingLongRunKm(weekKm) {
+  if(!(weekKm > 0)) return 0;
+  const share = weekKm >= ONBOARDING_HIGH_VOLUME_KM ? 0.25 : 0.30;
+  return Math.max(1, Math.floor(weekKm * share));
+}
+
+// Plano de adaptação: segue a estrutura do 'Plano inicial branco – nível I' do Daniels (ver pendência de licença/atribuição antes de lançamento público):
+// 3 sessões/semana sem dias consecutivos, 30 min cada, corrida fácil alternada com caminhada.
+const ONBOARDING_BEGINNER_SESSIONS = [
+  { notes:'Adaptação: 10 min de corrida em 30 min, alternando corrida fácil e caminhada.',
+    steps:[{icon:'🚶',text:'Caminhada 5 min',detail:'aquecimento'},
+           {icon:'🏃',text:'10 × (1 min corrida fácil + 1 min caminhada)',detail:'ritmo em que dá para conversar'},
+           {icon:'🚶',text:'Caminhada 5 min',detail:'desaquecimento'}] },
+  { notes:'Adaptação: 14 min de corrida em 30 min, alternando corrida fácil e caminhada.',
+    steps:[{icon:'🚶',text:'Caminhada 5 min',detail:'aquecimento'},
+           {icon:'🏃',text:'7 × (2 min corrida fácil + 1 min caminhada)',detail:'ritmo em que dá para conversar'},
+           {icon:'🚶',text:'Caminhada 4 min',detail:'desaquecimento'}] },
+  { notes:'Adaptação: 10 min de corrida em 30 min, com blocos curtos e leves.',
+    steps:[{icon:'🚶',text:'Caminhada 5 min',detail:'aquecimento'},
+           {icon:'🏃',text:'6 × (1 min corrida fácil + 30 s caminhada)',detail:'ritmo em que dá para conversar'},
+           {icon:'🏃',text:'8 × (30 s corrida fácil + 1 min caminhada)',detail:'ritmo em que dá para conversar'},
+           {icon:'🚶',text:'Caminhada 4 min',detail:'desaquecimento'}] }
+];
 
 function calcMonthGoalFromWeek(weekKm) {
   return Math.round(weekKm * 4.2 / 10) * 10;
@@ -8637,7 +8741,9 @@ async function finishOnboarding() {
   // v0.9.2.1-LOCAL: no modo LOCAL_GEMINI, a IA só está disponível se o
   // usuário configurou uma key (não há mais backend nativo sem key).
   // Quando AI_BACKEND_MODE voltar a ser 'FIREBASE_BACKEND', basta estar logado.
-  const aiAvailable = AI_BACKEND_MODE === 'FIREBASE_BACKEND' ? !!state.user : hasGeminiKey();
+  // v1.0 (Feedback 1A): plano de adaptação (volume 0/em branco) não usa a IA — a
+  // estrutura vem do livro e a IA poderia devolver km que contradizem o bloco por tempo.
+  const aiAvailable = !isTimeBlockStart(_obData) && (AI_BACKEND_MODE === 'FIREBASE_BACKEND' ? !!state.user : hasGeminiKey());
   let aiPlan = null;
   if(aiAvailable) {
     setObBtnLoading(btn, 'Coach preparando seu plano...');
@@ -8731,6 +8837,7 @@ async function generateInitialTrainingStrategyLegacy(data, weekKm) {
   const raceLabels = {marathon:'Maratona',half:'Meia Maratona','10k':'10 km','5k':'5 km',health:'Saúde e Condicionamento'};
   const levelLabels = {beginner:'Iniciante',intermediate:'Intermediário',advanced:'Avançado'};
 
+  const hasCurrentKm = typeof data.currentWeeklyKm === 'number' && data.currentWeeklyKm > 0;
   const prompt = `Você é um Coach de corrida especializado. Analise o perfil do atleta e gere uma estratégia de treinamento inicial personalizada.
 
 PERFIL:
@@ -8744,12 +8851,14 @@ PERFIL:
 - Disponibilidade: ${data.daysPerWeek} dias/semana
 - Rotina de trabalho: ${scaleLabels[data.scale]||data.scale}
 - Volume calculado pelas regras: ${weekKm}km/semana
+${hasCurrentKm ? `- Volume semanal ATUAL do atleta: ${data.currentWeeklyKm}km/semana. LIMITE ABSOLUTO da semana 1: ${weekKm}km (nunca acima disso, mesmo que a prova seja ambiciosa)` : ''}
 
 TAREFA: Gere uma estratégia de primeira semana PERSONALIZADA. Considere:
 1. O nível real do atleta (não apenas intermediário genérico)
 2. A disponibilidade semanal e rotina de trabalho
 3. A meta específica e o prazo
-4. Um volume que seja desafiador mas seguro para a semana 1
+4. Um volume SEGURO para a semana 1${hasCurrentKm ? ', respeitando o limite absoluto acima' : ''}
+5. O longão não pode passar de 25–30% do volume semanal (a soma das sessões não pode passar de weeklyVolume)
 
 Responda APENAS com JSON válido, sem markdown, sem texto extra:
 {
@@ -8786,9 +8895,13 @@ Responda APENAS com JSON válido, sem markdown, sem texto extra:
 
     // Validação mínima
     if(!parsed.weeklyVolume || !parsed.rationale) return null;
-    // Sanity clamp: volume entre 80% e 150% do calculado pelas regras
-    parsed.weeklyVolume = Math.max(Math.round(weekKm*0.8), Math.min(Math.round(weekKm*1.5), parsed.weeklyVolume));
-    parsed.longRun = parsed.longRun || Math.round(parsed.weeklyVolume * 0.35);
+    // Sanity clamp. v1.0 (Feedback 1A): com volume atual informado, weekKm já é
+    // min(regras, volume atual) e vira o TETO (a IA pode reduzir, nunca passar).
+    // Sem volume atual (caminho legado), mantém 80%–150% do valor das regras.
+    const ceilingKm = hasCurrentKm ? weekKm : Math.round(weekKm*1.5);
+    parsed.weeklyVolume = Math.max(Math.round(weekKm*0.8), Math.min(ceilingKm, parsed.weeklyVolume));
+    const longCapKm = calcOnboardingLongRunKm(parsed.weeklyVolume);
+    parsed.longRun = Math.min(Number(parsed.longRun) || longCapKm, longCapKm);
     parsed.sessions = parsed.sessions || data.daysPerWeek;
     return parsed;
   } catch(e) {
@@ -8797,9 +8910,29 @@ Responda APENAS com JSON válido, sem markdown, sem texto extra:
   }
 }
 
+// v1.0 (Feedback 1A): garante que as sessões sugeridas pela IA respeitam o volume
+// e o teto do longão (a IA sozinha não é garantia de segurança).
+function capAiSessionsToWeek(aiSessions, weekKm, longCapKm) {
+  const runTypes = ['long','z2','interval','progressivo','tempo','recovery'];
+  const out = aiSessions.map(s => ({...s}));
+  out.forEach(s => {
+    if(!runTypes.includes(s.type)) return;
+    s.dist = Number(s.dist) || 0;
+    if(s.type === 'long' && s.dist > longCapKm) s.dist = longCapKm;
+  });
+  const total = out.filter(s => runTypes.includes(s.type)).reduce((a,s) => a + s.dist, 0);
+  if(total > weekKm && total > 0) {
+    const f = weekKm / total;
+    out.forEach(s => { if(runTypes.includes(s.type) && s.dist > 0) s.dist = Math.floor(s.dist * f * 10) / 10; });
+  }
+  return out;
+}
+
 // ── First week plan generator ─────────────────────────────
 // v0.9.2: usa sessionBreakdown da IA quando disponível
 function generateFirstWeekPlan(data, weekKm, aiPlan=null) {
+  // v1.0 (Feedback 1A): plano de adaptação por tempo (sem km) para quem não corre hoje.
+  if(isTimeBlockStart(data) && !aiPlan) return generateBeginnerAdaptationWeek(weekKm);
   const days = aiPlan?.sessions || data.daysPerWeek;
   const ws = weekStart(today());
   // Start from next monday if today is mid-week
@@ -8820,11 +8953,15 @@ function generateFirstWeekPlan(data, weekKm, aiPlan=null) {
 
   const longDay = offsets[offsets.length-1]; // last day = longão
   const totalKm = weekKm;
-  const longKm  = aiPlan?.longRun || Math.round(totalKm * 0.35);
-  const easyKm  = Math.round((totalKm - longKm) / (offsets.length - 1));
+  // v1.0 (Feedback 1A): longão = 25–30% do volume (Daniels), nunca os 35% antigos;
+  // easyKm arredondado para baixo em passos de 0,5 km para a soma nunca passar de weekKm.
+  const longCapKm = calcOnboardingLongRunKm(totalKm);
+  const longKm  = aiPlan?.longRun ? Math.min(aiPlan.longRun, longCapKm) : longCapKm;
+  const easyKm  = Math.floor((totalKm - longKm) / (offsets.length - 1) * 2) / 2;
 
-  // Usar sessionBreakdown da IA se disponível (mapeia por posição)
-  const aiSessions = aiPlan?.sessionBreakdown || [];
+  // Usar sessionBreakdown da IA se disponível (mapeia por posição) — com teto:
+  // a IA pode devolver sessões cuja soma passa do volume ou um longão acima do teto.
+  const aiSessions = capAiSessionsToWeek(aiPlan?.sessionBreakdown || [], totalKm, longCapKm);
 
   offsets.forEach((dayOffset, idx) => {
     const d = new Date(startDate);
@@ -8857,6 +8994,27 @@ function generateFirstWeekPlan(data, weekKm, aiPlan=null) {
   return { plans, weekKm, longKm, easyKm, days, startStr, endStr };
 }
 
+function generateBeginnerAdaptationWeek(weekKm) {
+  const ws = weekStart(today());
+  const startDate = new Date(ws+'T12:00:00');
+  if(startDate <= new Date()) startDate.setDate(startDate.getDate()+7);
+  const startStr = startDate.toISOString().split('T')[0];
+  const offsets = [1,3,6]; // Ter, Qui, Dom — sem dias consecutivos
+  const plans = offsets.map((dayOffset, idx) => {
+    const d = new Date(startDate); d.setDate(d.getDate() + dayOffset);
+    const dateStr = d.toISOString().split('T')[0];
+    const s = ONBOARDING_BEGINNER_SESSIONS[idx];
+    return { id:`ob_plan_${dateStr}`, date:dateStr, type:'z2', dist:0, pace:'',
+             hr:0, rpe:0, fatigue:0, notes:s.notes, steps:s.steps, planned:true };
+  });
+  const endDate = new Date(startDate); endDate.setDate(endDate.getDate()+6);
+  const endStr = endDate.toISOString().split('T')[0];
+  state.workouts = state.workouts.filter(w => !(w.planned && w.date >= startStr && w.date <= endStr));
+  state.workouts.push(...plans);
+  save();
+  return { plans, weekKm, longKm:0, easyKm:0, days:3, startStr, endStr, timeBlock:true };
+}
+
 // ── First plan screen ─────────────────────────────────────
 function showFirstPlanScreen(planData, weekKm, aiPlan=null) {
   const screen = document.getElementById('screen-first-plan');
@@ -8880,16 +9038,16 @@ function showFirstPlanScreen(planData, weekKm, aiPlan=null) {
     </div>
     <div class="fp-plan-row">
       <span class="fp-plan-key">Volume inicial</span>
-      <span class="fp-plan-val">${weekKm} km / semana${aiPlan?'<span style="font-size:9px;color:var(--teal);margin-left:6px">✨ IA</span>':''}</span>
+      <span class="fp-plan-val">${planData.timeBlock ? '3 sessões de 30 min' : weekKm + ' km / semana'}${aiPlan?'<span style="font-size:9px;color:var(--teal);margin-left:6px">✨ IA</span>':''}</span>
     </div>
     <div class="fp-plan-row">
       <span class="fp-plan-key">Sessões planejadas</span>
       <span class="fp-plan-val">${planData.plans.length} treinos</span>
     </div>
-    <div class="fp-plan-row">
+    ${planData.timeBlock ? '' : `<div class="fp-plan-row">
       <span class="fp-plan-key">Longão inicial</span>
       <span class="fp-plan-val">${planData.longKm} km</span>
-    </div>
+    </div>`}
     <div class="fp-plan-row">
       <span class="fp-plan-key">Semana</span>
       <span class="fp-plan-val">${formatDate(planData.startStr)} →</span>
