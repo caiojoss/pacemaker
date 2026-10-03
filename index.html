@@ -6513,6 +6513,7 @@ async function exchangeStravaCode(code) {
 }
 
 async function refreshStravaToken() {
+  _stravaTokenRefreshError = null;
   const t = getStravaTokens();
   if(!t) return null;
   if(Date.now()/1000 < t.expires_at - 300) return t.access_token; // Still valid
@@ -6527,9 +6528,73 @@ async function refreshStravaToken() {
       setStravaTokens(updated);
       return data.access_token;
     }
-    console.error('Strava refresh error:', data?.message || `HTTP ${res.status}`);
-  } catch(e) { console.error('Token refresh failed:', e.message); }
-  return t.access_token;
+    const err = new Error(data?.message || `HTTP ${res.status}`);
+    err.reconnect = res.status === 400 || res.status === 401;
+    throw err;
+  } catch(e) {
+    _stravaTokenRefreshError = e;
+    console.error('Token refresh failed:', e.message);
+  }
+  // Never continue with an expired access token after a failed refresh.
+  return null;
+}
+
+function isStravaRunActivity(activity) {
+  return ['Run','VirtualRun','Trail Run'].includes(activity?.sport_type || activity?.type);
+}
+
+function stravaActivityLocalDate(activity) {
+  const raw = String(activity?.start_date_local || activity?.start_date || '');
+  const date = raw.slice(0, 10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const [year, month, day] = date.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month-1, day));
+  return parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month-1 || parsed.getUTCDate() !== day ? null : date;
+}
+
+function matchPlannedRunForStrava(workout) {
+  if(!workout) return false;
+  if(workout.completedPlanId) return false;
+  const runTypes = ['z2','long','progressivo','interval','tempo','recovery'];
+  const plan = state.workouts.find(w=>isPlanned(w) && w.date===workout.date && runTypes.includes(w.type));
+  if(!plan) return false;
+  workout.completedPlanId = plan.id;
+  state.workouts = state.workouts.filter(w=>w!==plan);
+  return true;
+}
+
+function importStravaActivity(activity) {
+  const isRun = isStravaRunActivity(activity);
+  const date = stravaActivityLocalDate(activity);
+  if(!date || !activity?.id) return {workout:null, created:false, linked:false};
+  const stravaId = String(activity.id);
+  let workout = state.workouts.find(w=>String(w.stravaId||'')===stravaId);
+  if(workout) {
+    const dateChanged = workout.date !== date;
+    if(dateChanged) workout.date = date;
+    const linked = isRun && matchPlannedRunForStrava(workout);
+    return {workout, created:false, linked, changed:dateChanged || linked};
+  }
+
+  const distKm = parseFloat(((activity.distance||0)/1000).toFixed(2));
+  const paceSec = isRun && activity.distance>0 ? activity.moving_time/(activity.distance/1000) : 0;
+  workout = {
+    id: 'strava_' + stravaId,
+    stravaId,
+    type: isRun ? detectRunType(activity) : stravaTypeToPM(activity.sport_type||activity.type),
+    date,
+    dist: distKm,
+    pace: paceSec ? secsToPaceStr(paceSec) : '',
+    hr: activity.average_heartrate ? Math.round(activity.average_heartrate) : 0,
+    maxHR: activity.max_heartrate ? Math.round(activity.max_heartrate) : 0,
+    stravaWorkoutType: (typeof activity.workout_type === 'number') ? activity.workout_type : null,
+    duration: Math.round((activity.moving_time||0)/60),
+    rpe: 0, fatigue: 0,
+    notes: activity.name !== 'Afternoon Run' && activity.name !== 'Morning Run' ? (activity.name||'') : ''
+  };
+  const linked = isRun && matchPlannedRunForStrava(workout);
+  state.workouts.unshift(workout);
+  return {workout, created:true, linked};
 }
 
 // Map Strava activity type to Pacemaker type
@@ -6566,10 +6631,19 @@ function secsToPaceStr(secsPerKm) {
 
 let stravaActivitiesCache = [];
 let stravaSelectedIds = new Set();
+const STRAVA_AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000;
+const STRAVA_PAGE_SIZE = 200;
+let _stravaAutoSyncPromise = null;
+let _stravaTokenRefreshError = null;
+let _stravaMissingTokenWarned = false;
 
 async function stravaSync() {
   const token = await refreshStravaToken();
-  if(!token) { showToast('Sessão expirada. Reconecte o Strava.', 'error'); return; }
+  if(!token) {
+    const reconnect = _stravaTokenRefreshError?.reconnect;
+    showToast(reconnect ? 'Sessão do Strava expirada. Reconecte neste dispositivo.' : 'Não foi possível renovar a sessão do Strava. Tente novamente.', 'error');
+    return;
+  }
 
   showToast('Buscando atividades...');
   stravaActivitiesCache = [];
@@ -6586,17 +6660,87 @@ async function stravaSync() {
     const acts = await res.json();
     stravaActivitiesCache = acts;
 
-    // Update last sync time
-    const t = getStravaTokens();
-    setStravaTokens({...t, lastSync: Date.now()});
-    updateStravaBadge();
-
     renderStravaImportModal(acts);
     openModal('modal-strava');
   } catch(e) {
     showToast('Erro ao buscar atividades: ' + e.message, 'error');
     console.error(e);
   }
+}
+
+function stravaAutoSync(force=false) {
+  if(_stravaAutoSyncPromise) return _stravaAutoSyncPromise;
+  const run = Promise.resolve().then(async () => {
+    if(!navigator.onLine) return 0;
+    const beforeRefresh = getStravaTokens();
+    if(!beforeRefresh?.access_token) {
+      if(state.stravaConfig?.connected && !_stravaMissingTokenWarned) {
+        _stravaMissingTokenWarned = true;
+        showToast('Strava está conectado, mas falta a sessão neste dispositivo. Reconecte para sincronizar.', 'error');
+      }
+      return 0;
+    }
+    if(!force && beforeRefresh.initialImportComplete && beforeRefresh.lastSync &&
+       Date.now() - beforeRefresh.lastSync < STRAVA_AUTO_SYNC_INTERVAL_MS) return 0;
+
+    const token = await refreshStravaToken();
+    if(!token) {
+      const reconnect = _stravaTokenRefreshError?.reconnect;
+      showToast(reconnect ? 'Sessão do Strava expirada. Reconecte neste dispositivo.' : 'Falha ao renovar a sessão do Strava. A sincronização será tentada novamente.', 'error');
+      return 0;
+    }
+
+    const startedAt = Date.now();
+    const startedAtSec = Math.floor(startedAt / 1000);
+    const isInitial = !beforeRefresh.initialImportComplete;
+    const activities = [];
+    let page = 1;
+    try {
+      while(true) {
+        const params = new URLSearchParams({per_page:String(STRAVA_PAGE_SIZE), page:String(page), before:String(startedAtSec)});
+        if(!isInitial && beforeRefresh.lastSync) {
+          params.set('after', String(Math.max(0, Math.floor(beforeRefresh.lastSync / 1000) - 1)));
+        }
+        const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params.toString()}`, {
+          headers:{Authorization:`Bearer ${token}`}
+        });
+        if(!res.ok) {
+          const err = new Error(`HTTP ${res.status}`);
+          err.reconnect = res.status === 401;
+          throw err;
+        }
+        const batch = await res.json();
+        if(!Array.isArray(batch)) throw new Error('Resposta inválida da API do Strava.');
+        activities.push(...batch);
+        if(batch.length < STRAVA_PAGE_SIZE) break;
+        page++;
+      }
+
+      let imported = 0, changed = false;
+      activities.forEach(activity => {
+        if(!isStravaRunActivity(activity)) return;
+        const result = importStravaActivity(activity);
+        if(result.created) imported++;
+        if(result.created || result.linked || result.changed) changed = true;
+      });
+      if(changed) {
+        state.workouts.sort((a,b)=>b.date.localeCompare(a.date));
+        save();
+        renderDashboard(); renderLog(); renderPlanner();
+      }
+      const latestTokens = getStravaTokens() || beforeRefresh;
+      setStravaTokens({...latestTokens, initialImportComplete:true, lastSync:startedAt});
+      updateStravaBadge();
+      if(imported > 0) showToast(`${imported} treinos novos do Strava`);
+      return imported;
+    } catch(e) {
+      console.error('Strava automatic sync failed:', e.message);
+      showToast(e.reconnect ? 'Sessão do Strava expirada. Reconecte neste dispositivo.' : 'Falha ao sincronizar Strava. Tente novamente mais tarde.', 'error');
+      return 0;
+    }
+  });
+  _stravaAutoSyncPromise = run.finally(() => { _stravaAutoSyncPromise = null; });
+  return _stravaAutoSyncPromise;
 }
 
 function renderStravaImportModal(acts) {
@@ -6670,40 +6814,8 @@ function stravaImportSelected() {
   stravaSelectedIds.forEach(idStr=>{
     const a = stravaActivitiesCache.find(x=>String(x.id)===idStr);
     if(!a) return;
-    const isRun = ['Run','VirtualRun','Trail Run'].includes(a.sport_type||a.type);
-    const distKm = parseFloat((a.distance/1000).toFixed(2));
-    const paceSec = isRun && a.distance>0 ? a.moving_time/(a.distance/1000) : 0;
-    const dt = new Date(a.start_date_local);
-    const dateStr = dt.toISOString().split('T')[0];
-    const runType = isRun ? detectRunType(a) : stravaTypeToPM(a.sport_type||a.type);
-    const w = {
-      id: 'strava_' + a.id,
-      stravaId: String(a.id),
-      type: runType,
-      date: dateStr,
-      dist: distKm,
-      pace: paceSec ? secsToPaceStr(paceSec) : '',
-      hr: a.average_heartrate ? Math.round(a.average_heartrate) : 0,
-      // v1.0 (Zone Engine — Commit 1): captura max_heartrate e workout_type do
-      // MESMO objeto de resumo que já vem em stravaActivitiesCache (nenhuma
-      // chamada nova ao Strava). Ainda NÃO usados em nenhum cálculo — só
-      // ficam disponíveis pra um commit futuro. workout_type é um campo
-      // não-oficial da API (1='Race'), preenchido só quando o próprio atleta
-      // marca a atividade manualmente no app do Strava — presente em poucas
-      // atividades na prática, por isso fica como metadado opcional, nunca
-      // como fonte primária de classificação.
-      maxHR: a.max_heartrate ? Math.round(a.max_heartrate) : 0,
-      stravaWorkoutType: (typeof a.workout_type === 'number') ? a.workout_type : null,
-      duration: Math.round(a.moving_time/60),
-      rpe: 0, fatigue: 0,
-      notes: a.name !== 'Afternoon Run' && a.name !== 'Morning Run' ? a.name : ''
-    };
-    // Avoid duplicates
-    if(!state.workouts.find(x=>x.stravaId===w.stravaId)) {
-      state.workouts.unshift(w);
-      importedWorkouts.push(w);
-      count++;
-    }
+    const result = importStravaActivity(a);
+    if(result.created) { importedWorkouts.push(result.workout); count++; }
   });
   // Sort by date desc
   state.workouts.sort((a,b)=>b.date.localeCompare(a.date));
@@ -7014,8 +7126,13 @@ function renderAuthCard() {
       avatarEl.src = state.user.photoURL;
       avatarEl.style.display = 'block';
     }
-    // Auto-sync on login
-    downloadFromCloud().then(() => checkMigration());
+    // Load cloud state before automatic Strava import so dedupe/reconciliation
+    // runs against the newest workout list.
+    window._pmCloudReady = downloadFromCloud().then(() => {
+      checkMigration();
+      migrateLegacyStravaTokens();
+      return stravaAutoSync();
+    }).catch(e => console.warn('Post-login Strava sync skipped:', e.message));
   } else {
     loggedOut.style.display = 'block';
     loggedIn.style.display  = 'none';
@@ -7212,8 +7329,9 @@ window.addEventListener('offline', () => setSyncStatus('offline'));
 
 // Sync on visibility change (returning to app from another tab)
 document.addEventListener('visibilitychange', () => {
-  if(document.visibilityState === 'visible' && state.user && navigator.onLine) {
-    downloadFromCloud().catch(() => {});
+  if(document.visibilityState === 'visible' && navigator.onLine) {
+    const cloudReady = state.user ? downloadFromCloud() : Promise.resolve();
+    window._pmCloudReady = cloudReady.then(() => stravaAutoSync()).catch(() => {});
   }
 });
 
@@ -7807,6 +7925,8 @@ renderDashboard();
 
   try {
     await handleStravaCallback();
+    if(window._pmCloudReady) await window._pmCloudReady;
+    await stravaAutoSync();
   } finally {
     // Só redesenha se algo relevante do Strava mudou (conexão via OAuth ou
     // migração de tokens legados) — renderDashboard() já rodou uma vez acima.
