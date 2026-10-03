@@ -2663,7 +2663,7 @@ function renderDashboardBase() {
   const dashboardWeekNo = Math.ceil((((isoWeekDate - yearStart) / 86400000) + 1) / 7);
   const greetingHour = new Date().getHours();
   const greetingText = greetingHour < 12 ? 'BOM DIA' : greetingHour < 18 ? 'BOA TARDE' : 'BOA NOITE';
-  const athleteName = state.config.name || 'Caio';
+  const athleteName = state.config.name || 'Atleta';
   const greetingEl = document.getElementById('db-greeting');
   if(greetingEl) greetingEl.textContent = `${greetingText}, ${athleteName}`;
   const weekStampEl = document.getElementById('db-week-number');
@@ -4349,8 +4349,17 @@ function buildCoachContext() {
   const weekSchedule = getPlanningWeekSchedule();
   const weekScheduleText = formatWeekScheduleForPrompt(weekSchedule);
 
+  // v1.0 (PR confiança): campos que o Coach (boas-vindas e respostas) já lia
+  // mas nunca existiram neste objeto — geravam "undefinedkm" / "undefined sessões".
+  const lastWeekKm = lastWeek ? lastWeek.km : 0;
+  const weekStartStr = weekStart(today());
+  const weekEndDate = new Date(weekStartStr+'T12:00:00'); weekEndDate.setDate(weekEndDate.getDate()+6);
+  const weekEndStr = weekEndDate.toISOString().split('T')[0];
+  const strengthSessions = state.workouts.filter(w=>w.type==='strength'&&isCompleted(w)&&w.date>=weekStartStr&&w.date<=weekEndStr).length;
+
   return {
     days, wkm, mkm, pred, rs, adh,
+    lastWeekKm, strengthSessions,
     goalDistanceKm, targetPaceInfo,
     tomorrowIsWork: isWorkDay(tomorrowStr),
     longoes,
@@ -4464,7 +4473,7 @@ function renderCoachContext() {
 
   if(state.chatHistory.length===0) {
     const name = state.config.name||'Atleta';
-    state.chatHistory.push({role:'coach', text:`Olá, ${name}! Seu coach está pronto.\n\nSemana passada: ${c.lastWeekKm}km. Esta semana: ${c.wkm}km. Prontidão: ${c.rs}/100.\n\n${c.days!=='--'?`Faltam ${c.days} dias para a maratona.`:'Configure a data da maratona em Configurações.'}\n\nUse o card "Planejar semana" acima para montar seu treino no calendário, ou me faça uma pergunta.`});
+    state.chatHistory.push({role:'coach', text:`Olá, ${name}! Seu coach está pronto.\n\nSemana passada: ${c.lastWeekKm}km. Esta semana: ${c.wkm}km. Prontidão: ${c.rs}/100.\n\n${state.config.goalType==='health'?'':(c.days!=='--'?`Faltam ${c.days} dias para a prova${state.config.raceName?` (${state.config.raceName})`:''}.`:'Configure a data da prova em Configurações.')+'\n\n'}Use o card "Planejar semana" acima para montar seu treino no calendário, ou me faça uma pergunta.`});
     save();
   }
   renderChatMsgs();
@@ -6009,7 +6018,7 @@ const mockResponses = [
       // usava predictMarathon()/rótulo fixo mesmo pra quem não corre maratona.
       const pred = c.pred;
       const raceLabel = state.config.raceName || 'sua prova';
-      return `Resumo atual: ${c.mkm}km este mês (meta ${state.config.monthGoal||190}km) · ${c.wkm}km esta semana · Previsão ${raceLabel}: ${pred?secToTime(pred):'registre longões para calcular'} · Prontidão: ${c.rs}/100 · ${c.days} dias até a prova. ${c.lastWeekKm>0?`Semana passada: ${c.lastWeekKm}km.`:''}`;
+      return `Resumo atual: ${c.mkm}km este mês ${state.config.monthGoal?`(meta ${state.config.monthGoal}km) `:''}· ${c.wkm}km esta semana · Previsão ${raceLabel}: ${pred?secToTime(pred):'registre longões para calcular'} · Prontidão: ${c.rs}/100 · ${c.days} dias até a prova. ${c.lastWeekKm>0?`Semana passada: ${c.lastWeekKm}km.`:''}`;
     }},
   { keys:['musculação','musculacao','força','forca','peito','costas','perna','academia'],
     reply(c){ const s=c.strengthSessions; return `${s===0?'Você não fez musculação esta semana ainda.':s===1?'1 sessão de musculação esta semana.':s+' sessões de musculação esta semana.'} A força complementa a corrida: glúteos e core protegem os joelhos e melhoram a economia de movimento. Mínimo 2 sessões/semana na fase de construção. Rotação A (Peito/Tríceps) → B (Costas/Bíceps) → C (Pernas) garante recuperação entre grupos.`; }},
@@ -6172,14 +6181,16 @@ function saveAthleteMemory() {
     goalType:   document.getElementById('cfg-goal-type').value,
     raceDate:   document.getElementById('cfg-race-date').value,
     raceName:   document.getElementById('cfg-race-name').value || 'Maratona',
-    monthGoal:  parseInt(document.getElementById('cfg-month-goal').value) || 190,
-    weekGoal:   parseInt(document.getElementById('cfg-week-goal').value) || 52,
+    // v1.0 (PR confiança): campo vazio preserva o valor já salvo (ou 0 = "não definido").
+    // Antes gravava 190/52/110/175 — números do próprio autor — na conta de qualquer usuário.
+    monthGoal:  parseInt(document.getElementById('cfg-month-goal').value) || state.config.monthGoal || 0,
+    weekGoal:   parseInt(document.getElementById('cfg-week-goal').value) || state.config.weekGoal || 0,
     workSchedule: scaleVal,
     scaleStart: document.getElementById('cfg-scale-start').value,
     customWorkDays,
     name:       document.getElementById('cfg-name').value || 'Atleta',
-    weight:     parseInt(document.getElementById('cfg-weight').value) || 110,
-    height:     parseInt(document.getElementById('cfg-height').value) || 175,
+    weight:     parseInt(document.getElementById('cfg-weight').value) || state.config.weight || 0,
+    height:     parseInt(document.getElementById('cfg-height').value) || state.config.height || 0,
   };
 
   state.athleteProfile = {
@@ -7317,7 +7328,7 @@ function updateRightPanel() {
         <span class="context-bar-val">${c.wkm} km</span>
       </div>
       <div class="context-bar-item">
-        <span class="context-bar-key">Previsão maratona</span>
+        <span class="context-bar-key">Previsão ${state.config.raceName || 'da prova'}</span>
         <span class="context-bar-val" style="color:var(--accent)">${c.pred?secToTime(c.pred):'--'}</span>
       </div>
     </div>
