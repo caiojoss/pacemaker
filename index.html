@@ -1353,6 +1353,7 @@ button:not(:disabled),[role="button"],[onclick]{transition-timing-function:var(-
           <div class="form-group" style="margin-bottom:12px">
             <label class="form-label">Algo específico? (opcional)</label>
             <textarea class="form-textarea" id="plan-notes" rows="2" placeholder="Ex: tenho prova domingo, quero priorizar tiros..."></textarea>
+            <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.4">O planejador entende só <strong>"prova"</strong> e <strong>"tiro / intervalo / velocidade"</strong>. Outras observações (como dias em que você não pode treinar) não alteram o plano — ajuste o dia no calendário depois de salvar.</div>
           </div>
           <button class="btn btn-primary btn-full" onclick="previewWeekPlan()">Ver preview do plano →</button>
         </div>
@@ -1758,10 +1759,26 @@ button:not(:disabled),[role="button"],[onclick]{transition-timing-function:var(-
       <button class="modal-close" onclick="closeModal('modal-params')">×</button>
     </div>
     <div class="form-group">
-      <label class="form-label">Longão alvo (km): <span id="param-long-val" style="color:var(--accent)">22</span>km</label>
-      <input type="range" id="param-long" min="14" max="36" step="1" value="22"
+      <label class="form-label">Longão</label>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" id="param-longmode-row">
+        <button class="rpe-btn sel" onclick="selectParam('longMode','auto',this)">Automático</button>
+        <button class="rpe-btn" onclick="selectParam('longMode','cap',this)">Limitar (km)</button>
+        <button class="rpe-btn" onclick="selectParam('longMode','none',this)">Sem longão</button>
+      </div>
+      <label class="form-label" style="margin-top:10px">Longão máximo (km): <span id="param-long-val" style="color:var(--accent)">22</span>km</label>
+      <input type="range" id="param-long" min="5" max="36" step="1" value="22"
         style="width:100%;accent-color:var(--accent);background:var(--surface2);height:4px;border-radius:2px;outline:none;margin-top:6px"
-        oninput="document.getElementById('param-long-val').textContent=this.value"/>
+        oninput="document.getElementById('param-long-val').textContent=this.value; selectLongCap()"/>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;line-height:1.4">Automático usa sua capacidade real e nunca passa de 25–30% da meta semanal. Com meta curta, o plano fica sem longão.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Corrida mínima por sessão</label>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap" id="param-minrun-row">
+        <button class="rpe-btn sel" onclick="selectParam('minRun','auto',this)">Automática</button>
+        <button class="rpe-btn" onclick="selectParam('minRun',2,this)">2 km</button>
+        <button class="rpe-btn" onclick="selectParam('minRun',3,this)">3 km</button>
+        <button class="rpe-btn" onclick="selectParam('minRun',5,this)">5 km</button>
+      </div>
     </div>
     <div class="form-group">
       <label class="form-label">Treinos de qualidade por semana</label>
@@ -2442,7 +2459,8 @@ function rebalanceAfterCompletion(completedDate, completedKm) {
   futurePlanned.forEach(w=>{
     // Cap at: min(original dist, 14km for Z2, 32km for long) — never inflate
     const maxDist = w.type==='long' ? Math.min(32, w.dist) : Math.min(14, w.dist);
-    w.dist = Math.max(5, Math.min(maxDist, Math.round(perDay)));
+    // v1.0 (PR planner): sessão planejada menor que 5 km nunca é inflada até 5 (plano de meta curta).
+    w.dist = Math.min(w.dist, Math.max(5, Math.min(maxDist, Math.round(perDay))));
   });
   save();
 }
@@ -4542,7 +4560,38 @@ function clearCoachHistory() {
 }
 
 // ==================== ADVANCED PARAMS ====================
-const planParams = { long: 22, quality: 1, intensity: 'standard', priority: 'volume', workrun: 'short' };
+// v1.0 (PR planner): longMode 'auto' | 'cap' | 'none' — 'long' só vale como teto quando longMode==='cap'.
+// minRun 'auto' | km — corrida mínima por sessão; 'auto' escala com a meta (ver getPlanMinRunKm).
+const planParams = { long: 22, longMode: 'auto', minRun: 'auto', quality: 1, intensity: 'standard', priority: 'volume', workrun: 'short' };
+
+// Mexer no slider do longão é pedir um teto: muda o modo para 'cap' (e marca o botão).
+function selectLongCap() {
+  planParams.long = parseInt(document.getElementById('param-long').value) || 22;
+  planParams.longMode = 'cap';
+  const row = document.getElementById('param-longmode-row');
+  if(row) row.querySelectorAll('.rpe-btn').forEach((b,i)=>b.classList.toggle('sel', i===1));
+}
+
+// Corrida mínima por sessão. 'auto' = 5 km (comportamento histórico) para metas >= 15 km;
+// abaixo disso escala com a meta (meta/3, mínimo 1 km), para que quem está começando,
+// voltando de lesão ou com meta curta não receba sessões maiores que a própria semana.
+// Parâmetro de produto, não vem de livro.
+function getPlanMinRunKm(params, kmGoal) {
+  const m = params && params.minRun;
+  if(typeof m === 'number' && m > 0) return m;
+  return Math.min(5, Math.max(1, Math.floor((kmGoal||0)/3)));
+}
+
+// Semana "pequena" (meta < 20 km): treino de qualidade não entra e corridas extras só entram se a
+// sobra da meta comporta meia sessão mínima. De 20 km para cima o comportamento é o histórico.
+// Parâmetro de produto, não vem de livro.
+const PLAN_SMALL_WEEK_KM = 20;
+
+// Aviso do preview quando o plano gerado passa da meta (>115%).
+function buildPlanOvershootNote(total, goal) {
+  if(!(goal > 0) || total <= goal*1.15) return '';
+  return `<br/><span style="color:var(--orange)">⚠ O plano ultrapassa a meta em ${(total-goal).toFixed(1)}km. Use "Ajustar parâmetros" (corrida mínima, longão) ou a versão conservadora.</span>`;
+}
 
 function selectParam(key, val, btn) {
   planParams[key] = val;
@@ -4552,7 +4601,7 @@ function selectParam(key, val, btn) {
 }
 
 function applyParamsAndPreview() {
-  planParams.long = parseInt(document.getElementById('param-long').value)||22;
+  if(planParams.longMode === 'cap') planParams.long = parseInt(document.getElementById('param-long').value)||22;
   closeModal('modal-params');
   previewWeekPlan();
 }
@@ -4587,7 +4636,57 @@ const STRENGTH_SESSIONS = [
   ]}
 ];
 
-function getNextStrengthSession() {
+// v1.0 (PR planner): a rotação segue athleteProfile.strengthPref. Antes era sempre A→B→C
+// (STRENGTH_SESSIONS), mesmo para quem escolheu Superior/Inferior. O conteúdo reaproveita os
+// exercícios que já existem; ABCD e Personalizado viram sessão livre — o app não conhece a
+// planilha do atleta e não inventa exercícios.
+const STRENGTH_ROTATIONS = {
+  AB: [
+    { label:'Superior — Peito + Costas + Ombro', keys:['superior'], steps:[
+      {icon:'💪',text:'Supino reto — 4x10',detail:''},
+      {icon:'💪',text:'Puxada frontal — 4x10',detail:''},
+      {icon:'💪',text:'Remada curvada — 4x10',detail:''},
+      {icon:'💪',text:'Desenvolvimento halteres — 3x12',detail:''},
+      {icon:'💪',text:'Elevação lateral — 3x15',detail:''},
+      {icon:'💪',text:'Rosca direta + tríceps corda — 3x12',detail:''},
+      {icon:'🧘',text:'Core: prancha 3x45s + abdominal',detail:''}
+    ]},
+    { label:'Inferior — Pernas Completo', keys:['inferior','perna'], steps: STRENGTH_SESSIONS[2].steps }
+  ],
+  PPL: [
+    { label:'Push — Peito + Ombro + Tríceps', keys:['push'], steps: STRENGTH_SESSIONS[0].steps },
+    { label:'Pull — Costas + Bíceps', keys:['pull'], steps: STRENGTH_SESSIONS[1].steps },
+    { label:'Legs — Pernas Completo', keys:['legs','perna'], steps: STRENGTH_SESSIONS[2].steps }
+  ],
+  LIVRE: [
+    { label:'Livre — conforme sua planilha', keys:['livre'], steps:[
+      {icon:'💪',text:'Treino de musculação conforme a sua planilha',detail:'Ajuste os exercícios neste dia'}
+    ]}
+  ]
+};
+
+function getStrengthRotation(pref) {
+  if(pref === 'AB')  return STRENGTH_ROTATIONS.AB;
+  if(pref === 'PPL') return STRENGTH_ROTATIONS.PPL;
+  if(pref === 'ABCD' || pref === 'custom') return STRENGTH_ROTATIONS.LIVRE;
+  return STRENGTH_SESSIONS; // ABC, vazio ou legado: comportamento original
+}
+
+function getStrengthRotationLabel(pref) {
+  if(pref === 'AB')  return 'Superior→Inferior';
+  if(pref === 'PPL') return 'Push→Pull→Legs';
+  if(pref === 'ABCD' || pref === 'custom') return 'treino livre';
+  return 'A→B→C';
+}
+
+function getNextStrengthSession(rotation) {
+  if(rotation && rotation !== STRENGTH_SESSIONS) {
+    const doneR = state.workouts.filter(w=>w.type==='strength'&&!w.planned).sort((a,b)=>b.date.localeCompare(a.date));
+    if(doneR.length===0) return 0;
+    const txt = ((doneR[0].notes||'')+' '+(doneR[0].title||'')).toLowerCase();
+    const idx = rotation.findIndex(s=>s.keys.some(k=>txt.includes(k)));
+    return idx < 0 ? 0 : (idx+1) % rotation.length;
+  }
   const done = state.workouts.filter(w=>w.type==='strength'&&!w.planned).sort((a,b)=>b.date.localeCompare(a.date));
   if(done.length===0) return 0;
   const lastNote = (done[0].notes||'').toLowerCase();
@@ -4765,8 +4864,8 @@ function suggestWeekKm() {
 //    distância inválida. O Commit B já garante que o Preview mostra a soma
 //    REAL (não a meta), então essa diferença aparece naturalmente para o
 //    atleta — não precisa de nenhuma mudança de UI para "reportar" isso.
-function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier) {
-  const FLOOR_KM = 5;
+function balanceWeeklyLoad(plan, kmGoal, fatigueMultiplier, floorKm=5) {
+  const FLOOR_KM = floorKm;
   const currentKm = plan.reduce((a,p)=>a+(p.workout?.dist||0),0);
   const gap = kmGoal - currentKm;
   if (Math.abs(gap) < 0.1) return;
@@ -4903,7 +5002,7 @@ function previewWeekPlan() {
   }
 
   const plan = generateWeekPlan(weekDays, kmGoal, feeling, notes, c, useLastWeekRef, planParams);
-  pendingPlan = {plan, kmGoal, kmGoalSource, feeling, notes, targetWs, weekLabel, planNextWeek, weekDays};
+  pendingPlan = {plan, kmGoal, kmGoalSource, feeling, notes, targetWs, weekLabel, planNextWeek, weekDays, floorKm: getPlanMinRunKm(planParams, kmGoal)};
 
   // Preview counts
   const longCount = plan.filter(p=>p.workout?.type==='long').length;
@@ -4925,10 +5024,10 @@ function previewWeekPlan() {
 
   const stdSubtitle = `Semana ${weekLabel} · Meta: ${kmGoal}km`;
   const stdList = [
-    longCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${longCount} longão (${longActualDist}km)</div>`:'',
+    longCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${longCount} longão (${longActualDist}km)</div>`:`<div class="preview-item"><span class="preview-check">≈</span>Sem longão nesta semana${planParams.longMode==='none'?' (escolha sua)':' (meta curta demais para um longão)'}</div>`,
     qualityCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${qualityCount} treino de qualidade</div>`:'',
     z2Count>0?`<div class="preview-item"><span class="preview-check">✓</span>${z2Count} rodagem Z2</div>`:'',
-    strengthCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${strengthCount} musculação (rotação A→B→C)</div>`:'',
+    strengthCount>0?`<div class="preview-item"><span class="preview-check">✓</span>${strengthCount} musculação (${getStrengthRotationLabel(state.athleteProfile?.strengthPref)})</div>`:'',
     `<div class="preview-item"><span class="preview-check">≈</span>80% Z2 / 20% qualidade (regra 80/20)</div>`,
   ].join('');
   
@@ -4940,7 +5039,8 @@ function previewWeekPlan() {
     `Volume: <strong style="color:var(--accent)">${actualTotal.toFixed(1)}km</strong> / ${kmGoal}km (${actualPct}%)<br/>`+
     `Intensidade: <strong>${{conservative:'Conservador',standard:'Padrão',aggressive:'Agressivo'}[planParams.intensity]}</strong> · `+
     `Prioridade: <strong>${{volume:'Volume',rhythm:'Ritmo',recovery:'Recuperação'}[planParams.priority]}</strong><br/>`+
-    (useLastWeekRef?`Ref semana passada: ${c.lastWeek.km}km considerados na progressão.`:'');
+    (useLastWeekRef?`Ref semana passada: ${c.lastWeek.km}km considerados na progressão.`:'') +
+    buildPlanOvershootNote(actualTotal, kmGoal);
 
   // Save snapshot so restoreStandardPreview can fully restore
   pendingPlan._stdSnapshot = {subtitle: stdSubtitle, list: stdList, summary: stdSummary};
@@ -4966,7 +5066,7 @@ function confirmPlan(conservative=false) {
   if(conservative) {
     plan.forEach(p=>{
       if(!p.workout||p.done) return;
-      if(p.workout.dist>0) p.workout.dist = Math.max(5, Math.round(p.workout.dist*0.8));
+      if(p.workout.dist>0) p.workout.dist = Math.min(p.workout.dist, Math.max(pendingPlan.floorKm||5, Math.round(p.workout.dist*0.8)));
       if(['interval'].includes(p.workout.type)) p.workout.type='z2';
     });
     kmGoal = Math.round(kmGoal*0.82);
@@ -5180,10 +5280,13 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   const freeDays = plan.filter(d=>!d.done&&!d.isPast);
   const freeOffDays = freeDays.filter(d=>!d.isWork);
   const freeWorkDays = freeDays.filter(d=>d.isWork);
-  let strengthRotIdx = getNextStrengthSession();
+  const strengthRotation = getStrengthRotation(ctx?.profile?.strengthPref);
+  let strengthRotIdx = getNextStrengthSession(strengthRotation);
+  // v1.0 (PR planner): a meta semanal agora limita o plano. Piso de corrida escala com a meta.
+  const floorKm = getPlanMinRunKm(params, kmGoal);
 
   // 1. Long run
-  const longDay = feeling!=='pain' ? (
+  let longDay = (feeling!=='pain' && params.longMode!=='none') ? (
     freeOffDays.find(d=>[6,0].includes(new Date(d.date+'T12:00:00').getDay()))||freeOffDays[0]
   ) : null;
   if(longDay) {
@@ -5194,9 +5297,18 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
     // distância; o compositor, que precisa preencher o dia de alguma forma,
     // aplica o piso operacional como fallback mínimo nesse caso específico.
     const longRunResult = getLongRunTarget(ctx?.days, state.config.goalType);
-    const dist = (longRunResult.status === 'calibrado')
+    let dist = (longRunResult.status === 'calibrado')
       ? longRunResult.dist
       : LONG_RUN_ENGINE_PARAMS.pisoOperacionalKm; // sem_dados — fallback do compositor, não do motor
+    // v1.0 (PR planner): o longão é uma fração da semana (Daniels: 25–30% do volume semanal),
+    // então a meta semanal passa a ser teto — mesma regra do onboarding. Se a fração fica abaixo
+    // do piso operacional, a semana simplesmente não tem longão. O teto manual só vale em 'cap'.
+    dist = Math.min(dist, calcOnboardingLongRunKm(kmGoal));
+    if(params.longMode === 'cap') dist = Math.min(dist, params.long);
+    dist = parseFloat(dist.toFixed(1));
+    if(dist < LONG_RUN_ENGINE_PARAMS.pisoOperacionalKm) {
+      longDay = null; // sem longão nesta semana: o dia volta a ser um dia livre comum
+    } else {
     longDay.workout = {
       type:'long', title:`Longão ${dist}km`, dist, pace:z2ref.pace,
       desc:`${dist}km em Z2 · ${z2ref.text}`,
@@ -5209,10 +5321,12 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
       ]
     };
     remaining -= dist;
+    }
   }
 
   // 2. Quality sessions
-  const qualityDays = freeOffDays.filter(d=>d!==longDay).slice(0, qualityCount);
+  // v1.0 (PR planner): treino de qualidade só com meta semanal que o comporte.
+  const qualityDays = kmGoal >= PLAN_SMALL_WEEK_KM ? freeOffDays.filter(d=>d!==longDay).slice(0, qualityCount) : [];
   qualityDays.forEach((d,qi)=>{
     if(feeling==='pain'||feeling==='tired') return;
     const dist = Math.round(Math.min(14, Math.max(8, planKm * 0.2)));
@@ -5240,9 +5354,9 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   // Antes, qualquer dia de trabalho sem corrida planejada virava "Musculação X" —
   // mesmo para corredores que nunca disseram que treinam força.
   const doesStrength = ctx.profile?.doesStrength !== false; // default true preserva perfis legados (ver migração em load())
-  const workRunKms = smartWorkDayDistribution(freeWorkDays.length, remaining, workrunKm, fatigueMultiplier);
+  const workRunKms = smartWorkDayDistribution(freeWorkDays.length, remaining, workrunKm, fatigueMultiplier, floorKm);
   freeWorkDays.forEach((d,i)=>{
-    const session = doesStrength ? STRENGTH_SESSIONS[strengthRotIdx%3] : null;
+    const session = doesStrength ? strengthRotation[strengthRotIdx%strengthRotation.length] : null;
     if(doesStrength) strengthRotIdx++;
     const km=workRunKms[i]||0;
     if(workrunMode==='none'||km===0) {
@@ -5272,8 +5386,11 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   // 4. Remaining off days → Z2
   const restOffDays = freeOffDays.filter(d=>!d.workout);
   restOffDays.forEach(d=>{
-    if(remaining<=0) return;
-    const km = Math.max(5, parseFloat((remaining/(restOffDays.length||1)).toFixed(1)));
+    // v1.0 (PR planner): em semana pequena só abre mais uma corrida se a sobra da meta comporta meia
+    // sessão mínima (antes, qualquer sobra > 0 virava uma corrida de 5 km e estourava a meta).
+    // Semanas >= 20 km mantêm a regra histórica.
+    if(kmGoal < PLAN_SMALL_WEEK_KM ? remaining < floorKm*0.5 : remaining <= 0) return;
+    const km = Math.max(floorKm, parseFloat((remaining/(restOffDays.length||1)).toFixed(1)));
     d.workout={type:'z2',title:`Z2 ${km}km`,dist:km,pace:z2ref.pace,
       desc:`${km}km Z2 · ${z2ref.text}`,
       steps:[{icon:'🏃',text:`${km}km Z2`,detail:z2ref.text}]};
@@ -5281,7 +5398,7 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   });
 
   // 5. Load balance: adjust Z2 days to hit km goal (usa planKm = volume a distribuir, não o total da semana)
-  balanceWeeklyLoad(plan, planKm, fatigueMultiplier);
+  balanceWeeklyLoad(plan, planKm, fatigueMultiplier, floorKm);
 
   // 6. Race adjustment
   if(hasRace&&freeDays.length>0) {
@@ -5293,17 +5410,17 @@ function generateWeekPlan(weekDays, kmGoal, feeling, notes, ctx, useRef=false, p
   return plan;
 }
 
-function smartWorkDayDistribution(count, remaining, baseKm, fatMult) {
+function smartWorkDayDistribution(count, remaining, baseKm, fatMult, floorKm=5) {
   // Return varied km per work day — no identical blocks
   // e.g. 4 days: [8, 10, 6, 9] instead of [10,10,10,10]
   if(count===0) return [];
   const effective = Math.min(baseKm, Math.round(remaining/count*fatMult));
-  const base = Math.max(5, effective);
+  const base = Math.max(floorKm, effective);
   const patterns = [
-    [base, Math.min(base+2,12), Math.max(base-2,5), base],
-    [Math.max(base-1,5), base+1, Math.max(base-2,5), base],
-    [base, base, Math.max(base-2,5)],
-    [Math.min(base+1,12), Math.max(base-1,5)],
+    [base, Math.min(base+2,12), Math.max(base-2,floorKm), base],
+    [Math.max(base-1,floorKm), base+1, Math.max(base-2,floorKm), base],
+    [base, base, Math.max(base-2,floorKm)],
+    [Math.min(base+1,12), Math.max(base-1,floorKm)],
     [base]
   ];
   return (patterns[count-1]||patterns[0]).slice(0,count);
@@ -5438,8 +5555,8 @@ function buildStepsFromType(w) {
     ];
   }
   if(type==='strength') {
-    const idx = getNextStrengthSession();
-    return STRENGTH_SESSIONS[idx].steps;
+    const rot = getStrengthRotation(state.athleteProfile?.strengthPref);
+    return rot[getNextStrengthSession(rot) % rot.length].steps;
   }
   if(type==='z2') return [{icon:'🏃',text:`${dist}km Z2`,detail:getZ2Reference().text}];
   if(type==='bike') return [{icon:'🚴',text:'Bike Z2',detail:'cadência 80–90rpm'},{icon:'🧘',text:'Alongamento pós',detail:''}];
@@ -5450,6 +5567,10 @@ function buildStepsFromType(w) {
 
 function getStrengthStepsForActive(w) {
   const notes = (w.notes||'').toLowerCase();
+  if(notes.includes('superior')) return STRENGTH_ROTATIONS.AB[0].steps;
+  if(notes.includes('push')) return STRENGTH_ROTATIONS.PPL[0].steps;
+  if(notes.includes('pull')) return STRENGTH_ROTATIONS.PPL[1].steps;
+  if(notes.includes('livre —')) return STRENGTH_ROTATIONS.LIVRE[0].steps;
   if(notes.includes('perna')||notes.includes('— c')) return STRENGTH_SESSIONS[2].steps;
   if(notes.includes('costas')||notes.includes('— b')) return STRENGTH_SESSIONS[1].steps;
   return STRENGTH_SESSIONS[0].steps;
@@ -5534,7 +5655,7 @@ function saveDrawerEdit() {
       if(adjustable.length > 0) {
         const offsetPerDay = (-delta) / adjustable.length; // inverse delta, split evenly
         adjustable.forEach(w => {
-          w.dist = Math.max(5, Math.round(w.dist + offsetPerDay));
+          w.dist = Math.max(Math.min(5, w.dist), Math.round(w.dist + offsetPerDay));
         });
       }
     }
@@ -5716,7 +5837,7 @@ function previewConservativePlan() {
   const conservPlan = plan.map(p=>{
     if(!p.workout||p.done) return p;
     const w = {...p.workout};
-    if(w.dist>0) w.dist = Math.max(5, Math.round(w.dist*0.8));
+    if(w.dist>0) w.dist = Math.min(w.dist, Math.max(pendingPlan.floorKm||5, Math.round(w.dist*0.8)));
     // Intervals → Z2
     const wasQuality = ['interval','tempo'].includes(w.type);
     if(wasQuality) { w.type='z2'; w.title=`Z2 ${w.dist}km (→ de tiros)`; }
@@ -5736,7 +5857,7 @@ function previewConservativePlan() {
   // musculação realmente faz parte do plano do atleta.
   const athleteDoesStrength = state.athleteProfile?.doesStrength !== false;
   const strengthLine = athleteDoesStrength
-    ? `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (rotação A→B→C)</div>`
+    ? `<div class="preview-item"><span class="preview-check" style="color:var(--teal)">✓</span>Musculação mantida (${getStrengthRotationLabel(state.athleteProfile?.strengthPref)})</div>`
     : '';
 
   // Show conservative preview in modal
@@ -6633,6 +6754,7 @@ let stravaActivitiesCache = [];
 let stravaSelectedIds = new Set();
 const STRAVA_AUTO_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const STRAVA_PAGE_SIZE = 200;
+const STRAVA_SYNC_OVERLAP_MS = 7 * 24 * 60 * 60 * 1000;
 let _stravaAutoSyncPromise = null;
 let _stravaTokenRefreshError = null;
 let _stravaMissingTokenWarned = false;
@@ -6699,7 +6821,12 @@ function stravaAutoSync(force=false) {
       while(true) {
         const params = new URLSearchParams({per_page:String(STRAVA_PAGE_SIZE), page:String(page), before:String(startedAtSec)});
         if(!isInitial && beforeRefresh.lastSync) {
-          params.set('after', String(Math.max(0, Math.floor(beforeRefresh.lastSync / 1000) - 1)));
+          // O filtro `after` do Strava compara com a data de INÍCIO da atividade, não com o
+          // momento em que ela foi enviada. Um treino que sobe ao Strava depois do último
+          // sync (relógio que sincroniza tarde) começou ANTES de lastSync e seria perdido
+          // para sempre. Janela de sobreposição de 7 dias; a deduplicação por stravaId
+          // (importStravaActivity) impede duplicatas.
+          params.set('after', String(Math.max(0, Math.floor((beforeRefresh.lastSync - STRAVA_SYNC_OVERLAP_MS) / 1000))));
         }
         const res = await fetch(`https://www.strava.com/api/v3/athlete/activities?${params.toString()}`, {
           headers:{Authorization:`Bearer ${token}`}
